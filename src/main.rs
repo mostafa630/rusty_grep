@@ -13,7 +13,7 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
     };
     if pattern.chars().count() == 1 {
          matcher.default()
-    }else if(pattern == "\\d") {
+    }else if pattern == "\\d" {
         matcher.match_any_digit()
     } else {
         panic!("Unhandled pattern: {}", pattern)
