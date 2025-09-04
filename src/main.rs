@@ -2,9 +2,19 @@ use std::env;
 use std::io;
 use std::process;
 
+mod pattern_matcher;
+use pattern_matcher::PatternMatcher;
+
+
 fn match_pattern(input_line: &str, pattern: &str) -> bool {
+    let matcher = PatternMatcher {
+        input_line : input_line.to_string(),
+        pattern : pattern.to_string(),
+    };
     if pattern.chars().count() == 1 {
-        return input_line.contains(pattern);
+         matcher.default()
+    }else if(pattern == "\\d") {
+        matcher.match_any_digit()
     } else {
         panic!("Unhandled pattern: {}", pattern)
     }
@@ -15,6 +25,7 @@ fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     eprintln!("Logs from your program will appear here!");
 
+    
     if env::args().nth(1).unwrap() != "-E" {
         println!("Expected first argument to be '-E'");
         process::exit(1);
