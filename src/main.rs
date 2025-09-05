@@ -15,7 +15,9 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
          matcher.default()
     }else if pattern == "\\d" {
         matcher.match_any_digit()
-    } else {
+    }else if pattern == "\\w" {
+        matcher.match_non_specail_char()
+    }else {
         panic!("Unhandled pattern: {}", pattern)
     }
 }
