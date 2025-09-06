@@ -17,4 +17,9 @@ impl PatternMatcher {
         let chars : Vec<char> = self.pattern[1..self.pattern.len()-1].chars().collect(); 
         self.input_line.chars().any(|c| chars.contains(&c)) // check if any char in input_line is in chars
     }
+    pub fn match_all_the_class(&self)->bool{
+        // get chars between [ ]   input [abc]  -> vec!['a','b','c']
+        let chars : Vec<char> = self.pattern[2..self.pattern.len()-1].chars().collect();
+        !(self.input_line.chars().all(|c| chars.contains(&c))) // return flase if all char in input_line is in chars
+    }
 }

@@ -18,7 +18,11 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
     }else if pattern == "\\w" {
         matcher.match_non_specail_char()
     }else if  pattern.starts_with('[') && pattern.ends_with(']') && pattern.chars().count() > 2 {
-        matcher.match_character_class()
+        if pattern.chars().nth(1).unwrap() == '^' {
+            matcher.match_all_the_class()
+        }else{
+            matcher.match_character_class()
+        }
     }else {
         panic!("Unhandled pattern: {}", pattern)
     }
