@@ -17,6 +17,8 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
         matcher.match_any_digit()
     }else if pattern == "\\w" {
         matcher.match_non_specail_char()
+    }else if  pattern.starts_with('[') && pattern.ends_with(']') && pattern.chars().count() > 2 {
+        matcher.match_character_class()
     }else {
         panic!("Unhandled pattern: {}", pattern)
     }
