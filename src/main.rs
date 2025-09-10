@@ -2,9 +2,10 @@ use std::env;
 use std::io;
 use std::process;
 
+mod Pattern;
 mod pattern_matcher;
-use pattern_matcher::PatternMatcher;
 
+use pattern_matcher::PatternMatcher;
 
 fn match_pattern(input_line: &str, pattern: &str) -> bool {
     let matcher = PatternMatcher {
