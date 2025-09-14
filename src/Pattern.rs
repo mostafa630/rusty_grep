@@ -1,18 +1,23 @@
 use std::str::{Chars, FromStr};
 
-use anyhow::Error;
-
 #[derive(Debug, PartialEq)]
 pub enum Token {
-    // Define the fields for PatternComponent here
-    Literal(char), //any hardcoded character
+    Literal(char), 
     Class(Class),
-    MatchOneClass(Vec<Self>),
+    MatchOne(Vec<Self>),
+    MatchNone(Vec<Self>),
 }
 #[derive(Debug, PartialEq)]
 pub enum Class {
     Digit,      // \d
     Identifier, // \w
+}
+
+#[derive(Debug)]
+pub enum ParseError {
+    Unclosed(String), // e.g. missing ]
+    InvalidEscape(String), // e.g. \q
+    UnexpectedEof(String),       // e.g. lone \
 }
 
 #[derive(Debug, PartialEq)]
@@ -21,25 +26,26 @@ pub struct Pattern {
 }
 
 impl FromStr for Pattern {
-    type Err = String;
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+
         let mut tokens = vec![];
         let mut chars = s.chars();
 
-        while let Some(token) = get_tokens(&mut chars)? {
-            tokens.push(token)
+        while let Some(token) = get_tokens(&mut chars)?{
+            tokens.push(token);
         }
         Ok(Self { tokens })
     }
 }
-fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, String> {
+fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     match chars.next() {
-        Some('\\') => match chars.next().ok_or("Expected another character after \\")? {
+        Some('\\') => match chars.next().ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))? {
             'd' => Ok(Some(Token::Class(Class::Digit))),
             'w' => Ok(Some(Token::Class(Class::Identifier))),
             '\\' => Ok(Some(Token::Literal('\\'))),
-            c => return Err(format!("{} is not Accepted After \\", c)),
+            c => return Err(ParseError::InvalidEscape(format!("\\ doesn't allow {} after it" , c))),
         },
         Some('[') => get_mathc_one_class_tokens(chars),
         Some(c) => Ok(Some(Token::Literal(c))),
@@ -47,16 +53,35 @@ fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, String> {
     }
 }
 
-fn get_mathc_one_class_tokens(chars: &mut Chars) -> Result<Option<Token>, String> {
+fn get_mathc_one_class_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     let mut tokens = vec![];
-
+    let is_inverted = match get_next_char(chars) {
+        Some('^') => {
+            chars.next(); // consume the '^' character
+            true
+        }
+        _ => false,
+        
+    };
     loop {
         match chars.next() {
-            Some(']') => break Ok(Some(Token::MatchOneClass(tokens))),
+            Some(']') =>{ 
+                if is_inverted {
+                    break Ok(Some(Token::MatchNone(tokens)))
+                }
+                 else{
+                    break Ok(Some(Token::MatchOne(tokens)))
+                 }
+            },
             Some(c) => tokens.push(Token::Literal((c))),
-            None => return Err(format!("Can't Find a Closing  ']'")),
+            None => return Err(ParseError::Unclosed(format!("Missing ]"))),
         }
     }
+}
+// get_next char and keeping the parser iterator as it was before calling this function
+fn get_next_char(chars: &mut Chars) -> Option<char> {
+    let mut clone = chars.clone();
+    clone.next()
 }
 
 #[test]
@@ -100,14 +125,14 @@ fn test_parsing_literals() {
 
 #[test]
 fn test_parsing_match_one_class() {
-    let s = "[def]";
+    let s = "[abc]";
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![Token::MatchOneClass(vec![
-            Token::Literal('d'),
-            Token::Literal('e'),
-            Token::Literal('f'),
+        tokens: vec![Token::MatchOne(vec![
+            Token::Literal('a'),
+            Token::Literal('b'),
+            Token::Literal('c'),
         ])],
     };
     assert_eq!(parsed, expected);
@@ -121,10 +146,26 @@ fn test_parsing_combination() {
         tokens: vec![
             Token::Literal('a'),
             Token::Class(Class::Digit),
-            Token::MatchOneClass(vec![Token::Literal('b'), Token::Literal('c')]),
+            Token::MatchOne(vec![Token::Literal('b'), Token::Literal('c')]),
             Token::Class(Class::Identifier),
         ],
     };
 
+    assert_eq!(parsed, expected);
+}
+#[test]
+fn test_parsing_match_none_class() {
+    let s = "[^xyz]";
+    let parsed : Pattern = s.parse().unwrap();
+    
+    let expected = Pattern { 
+        tokens : vec![
+            Token::MatchNone(vec![
+                Token::Literal('x'),
+                Token::Literal('y'),
+                Token::Literal('z'),
+            ])
+        ]
+    };
     assert_eq!(parsed, expected);
 }
