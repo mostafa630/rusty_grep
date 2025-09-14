@@ -1,12 +1,15 @@
-use std::{iter::Skip, str::{Chars, FromStr}};
+use std::{
+    iter::Skip,
+    str::{Chars, FromStr},
+};
 
 use crate::pattern_matcher;
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
-    Literal(char), 
+    Literal(char),
     CharClass(CharClass),
-    GroupClass(GroupClass)
+    GroupClass(GroupClass),
 }
 
 #[derive(Debug, PartialEq)]
@@ -17,26 +20,26 @@ pub enum CharClass {
 
 #[derive(Debug, PartialEq)]
 pub enum GroupClass {
-    MatchOne(Vec<Token>) ,
+    MatchOne(Vec<Token>),
     MatchNone(Vec<Token>),
 }
 
 impl Token {
-    // take string match  try to match the token from the start of the str 
-    // if ok retuen the rest of the str 
-    pub fn _match<'a>(&self , str : &'a str)->Option<&'a str> {
+    // take string match  try to match the token from the start of the str
+    // if ok retuen the rest of the str
+    pub fn _match<'a>(&self, str: &'a str) -> Option<&'a str> {
         match self {
-            Self::Literal(c)  if str.chars().next()? == *c => Some(skip(str, 1)),
-            _=> None
+            Self::Literal(c) if str.chars().next()? == *c => Some(skip(str, 1)),
+            _ => None,
         }
     }
 }
 
 #[derive(Debug)]
 pub enum ParseError {
-    Unclosed(String), // e.g. missing ]
+    Unclosed(String),      // e.g. missing ]
     InvalidEscape(String), // e.g. \q
-    UnexpectedEof(String),       // e.g. lone \
+    UnexpectedEof(String), // e.g. lone \
 }
 
 #[derive(Debug, PartialEq)]
@@ -48,11 +51,10 @@ impl FromStr for Pattern {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-
         let mut tokens = vec![];
         let mut chars = s.chars();
 
-        while let Some(token) = get_tokens(&mut chars)?{
+        while let Some(token) = get_tokens(&mut chars)? {
             tokens.push(token);
         }
         Ok(Self { tokens })
@@ -60,13 +62,12 @@ impl FromStr for Pattern {
 }
 
 impl Pattern {
-    pub fn match_input(&self , input_line: &str)->bool{
-        let mut rest =  input_line;
+    pub fn match_input(&self, input_line: &str) -> bool {
+        let mut rest = input_line;
         for token in &self.tokens {
             if let Some(remaining) = token._match(rest) {
                 rest = remaining
-            }
-            else {
+            } else {
                 return false;
             }
         }
@@ -74,14 +75,21 @@ impl Pattern {
     }
 }
 
-
 fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     match chars.next() {
-        Some('\\') => match chars.next().ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))? {
+        Some('\\') => match chars
+            .next()
+            .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
+        {
             'd' => Ok(Some(Token::CharClass(CharClass::Digit))),
             'w' => Ok(Some(Token::CharClass(CharClass::Identifier))),
             '\\' => Ok(Some(Token::Literal('\\'))),
-            c => return Err(ParseError::InvalidEscape(format!("\\ doesn't allow {} after it" , c))),
+            c => {
+                return Err(ParseError::InvalidEscape(format!(
+                    "\\ doesn't allow {} after it",
+                    c
+                )))
+            }
         },
         Some('[') => get_mathc_one_tokens(chars),
         Some(c) => Ok(Some(Token::Literal(c))),
@@ -97,18 +105,16 @@ fn get_mathc_one_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> 
             true
         }
         _ => false,
-        
     };
     loop {
         match chars.next() {
-            Some(']') =>{ 
+            Some(']') => {
                 if is_inverted {
-                    break Ok(Some(Token::GroupClass(GroupClass::MatchNone(tokens))))
+                    break Ok(Some(Token::GroupClass(GroupClass::MatchNone(tokens))));
+                } else {
+                    break Ok(Some(Token::GroupClass(GroupClass::MatchOne(tokens))));
                 }
-                else{
-                    break Ok(Some(Token::GroupClass(GroupClass::MatchOne(tokens))))
-                }
-            },
+            }
             Some(c) => tokens.push(Token::Literal((c))),
             None => return Err(ParseError::Unclosed(format!("Missing ]"))),
         }
@@ -171,7 +177,7 @@ fn test_parsing_match_one_class() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![Token::GroupClass (GroupClass::MatchOne(vec![
+        tokens: vec![Token::GroupClass(GroupClass::MatchOne(vec![
             Token::Literal('a'),
             Token::Literal('b'),
             Token::Literal('c'),
@@ -188,7 +194,10 @@ fn test_parsing_combination() {
         tokens: vec![
             Token::Literal('a'),
             Token::CharClass(CharClass::Digit),
-            Token::GroupClass(GroupClass::MatchOne(vec![Token::Literal('b'), Token::Literal('c')])),
+            Token::GroupClass(GroupClass::MatchOne(vec![
+                Token::Literal('b'),
+                Token::Literal('c'),
+            ])),
             Token::CharClass(CharClass::Identifier),
         ],
     };
@@ -198,17 +207,14 @@ fn test_parsing_combination() {
 #[test]
 fn test_parsing_match_none_class() {
     let s = "[^abc]";
-    let parsed : Pattern = s.parse().unwrap();
-    
-    let expected = Pattern { 
-        tokens : vec![
-            Token::GroupClass(GroupClass::MatchNone(vec![
-                Token::Literal('a'),
-                Token::Literal('b'),
-                Token::Literal('c'),
-            ]))
-        ]
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        tokens: vec![Token::GroupClass(GroupClass::MatchNone(vec![
+            Token::Literal('a'),
+            Token::Literal('b'),
+            Token::Literal('c'),
+        ]))],
     };
     assert_eq!(parsed, expected);
 }
-
