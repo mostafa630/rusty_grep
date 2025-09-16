@@ -29,7 +29,7 @@ impl PatternMatcher {
 
     pub fn match_pattern(&self) -> bool {
         let pattern_engine: Pattern = self.pattern.parse().unwrap();
-        pattern_engine.match_input(self.input_line.as_str())
+        pattern_engine.matches(self.input_line.as_str())
     }
 }
 
