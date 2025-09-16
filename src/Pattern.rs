@@ -69,7 +69,13 @@ impl FromStr for Pattern {
 }
 
 impl Pattern {
-    pub fn match_input(&self, input_line: &str) -> bool {
+    pub fn matches(&self, s: &str) -> bool {
+        (0..s.len())
+            .map(|offset| &s[offset..])
+            .any(|s| self.match_str(s))
+    }
+
+    fn match_str(&self, input_line: &str) -> bool {
         let mut rest = input_line;
         for token in &self.tokens {
             if let Some(remaining) = token._match(rest) {
