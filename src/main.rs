@@ -25,7 +25,7 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
             matcher.match_character_class()
         }
     } else {
-        panic!("Unhandled pattern: {}", pattern)
+        matcher.match_pattern()
     }
 }
 

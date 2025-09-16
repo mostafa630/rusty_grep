@@ -1,9 +1,4 @@
-use std::{
-    iter::Skip,
-    str::{Chars, FromStr},
-};
-
-use crate::pattern_matcher;
+use std::str::{Chars, FromStr};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
@@ -30,7 +25,19 @@ impl Token {
     pub fn _match<'a>(&self, str: &'a str) -> Option<&'a str> {
         match self {
             Self::Literal(c) if str.chars().next()? == *c => Some(skip(str, 1)),
+            Self::CharClass(char_class)
+                if Self::match_char_class(char_class, str.chars().next()?) =>
+            {
+                Some(skip(str, 1))
+            }
             _ => None,
+        }
+    }
+
+    pub fn match_char_class(class: &CharClass, c: char) -> bool {
+        match class {
+            CharClass::Digit => c.is_ascii_digit(),
+            CharClass::Identifier => c.is_ascii_alphabetic() || c == '_',
         }
     }
 }
@@ -39,7 +46,7 @@ impl Token {
 pub enum ParseError {
     Unclosed(String),      // e.g. missing ]
     InvalidEscape(String), // e.g. \q
-    UnexpectedEof(String), // e.g. lone \
+    UnexpectedEof(String), // e.g. alone \
 }
 
 #[derive(Debug, PartialEq)]
@@ -115,7 +122,7 @@ fn get_mathc_one_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> 
                     break Ok(Some(Token::GroupClass(GroupClass::MatchOne(tokens))));
                 }
             }
-            Some(c) => tokens.push(Token::Literal((c))),
+            Some(c) => tokens.push(Token::Literal(c)),
             None => return Err(ParseError::Unclosed(format!("Missing ]"))),
         }
     }

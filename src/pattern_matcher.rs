@@ -41,3 +41,27 @@ fn test_match_pattern_on_literals() {
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }
+#[test]
+fn test_match_pattern_on_digits() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "\\d\\d".to_string(),
+        input_line: "12".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
+#[test]
+fn test_match_pattern_on_identifier() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "\\w\\w\\w".to_string(),
+        input_line: "a_Z".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
+#[test]
+fn test_match_pattern_on_combinations() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "ac\\ddg\\w\\wf\\w".to_string(),
+        input_line: "ac5dga_fW".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
