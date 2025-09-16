@@ -1,10 +1,14 @@
-use std::str::{Chars, FromStr};
+use std::{
+    str::{Chars, FromStr},
+    vec,
+};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Literal(char),
     CharClass(CharClass),
     GroupClass(GroupClass),
+    LineAnchor(Vec<Token>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -47,6 +51,7 @@ pub enum ParseError {
     Unclosed(String),      // e.g. missing ]
     InvalidEscape(String), // e.g. \q
     UnexpectedEof(String), // e.g. alone \
+    InvalidStart(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -104,13 +109,14 @@ fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
                 )))
             }
         },
-        Some('[') => get_mathc_one_tokens(chars),
+        Some('^') => get_start(chars),
+        Some('[') => get_group_tokens(chars),
         Some(c) => Ok(Some(Token::Literal(c))),
         None => Ok(None),
     }
 }
 
-fn get_mathc_one_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+fn get_group_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     let mut tokens = vec![];
     let is_inverted = match get_next_char(chars) {
         Some('^') => {
@@ -131,6 +137,18 @@ fn get_mathc_one_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> 
             Some(c) => tokens.push(Token::Literal(c)),
             None => return Err(ParseError::Unclosed(format!("Missing ]"))),
         }
+    }
+}
+fn get_start(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+    let mut start_tokens = vec![];
+    while let Some(token) = get_tokens(chars)? {
+        start_tokens.push(token);
+    }
+    if start_tokens.len() == 0 {
+        return  Err(ParseError::InvalidStart("No thing after ^".to_string()))
+    }
+    else {
+        Ok(Some(Token::LineAnchor(start_tokens)))
     }
 }
 // get_next char and keeping the parser iterator as it was before calling this function
@@ -195,6 +213,22 @@ fn test_parsing_match_one_class() {
             Token::Literal('b'),
             Token::Literal('c'),
         ]))],
+    };
+    assert_eq!(parsed, expected);
+}
+#[test]
+fn test_parsing_match_line_anchor() {
+    let s = "^abc\\d\\w";
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        tokens: vec![Token::LineAnchor(vec![
+            Token::Literal('a'),
+            Token::Literal('b'),
+            Token::Literal('c'),
+            Token::CharClass(CharClass::Digit),
+            Token::CharClass(CharClass::Identifier)
+        ])],
     };
     assert_eq!(parsed, expected);
 }
