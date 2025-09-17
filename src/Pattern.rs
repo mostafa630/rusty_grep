@@ -34,6 +34,7 @@ impl Token {
             {
                 Some(skip(str, 1))
             }
+            Self::LineAnchor(sub_tokens) =>Self::match_group(sub_tokens.as_slice(), str),
             _ => None,
         }
     }
@@ -42,6 +43,20 @@ impl Token {
         match class {
             CharClass::Digit => c.is_ascii_digit(),
             CharClass::Identifier => c.is_ascii_alphabetic() || c == '_',
+        }
+    }
+
+    pub fn match_group<'a>(tokens : &[Token] , str : &'a str) -> Option<&'a str>{
+        if tokens.is_empty(){
+            return Some(str);
+        }
+
+        let(current_token , remaning_tokens) = tokens.split_first().unwrap();
+        if let Some(remaning_str) = current_token._match(str) {
+            Self::match_group(remaning_tokens, remaning_str)
+        }
+        else{
+            None
         }
     }
 }
@@ -75,9 +90,17 @@ impl FromStr for Pattern {
 
 impl Pattern {
     pub fn matches(&self, s: &str) -> bool {
-        (0..s.len())
-            .map(|offset| &s[offset..])
-            .any(|s| self.match_str(s))
+        // just a Closure to call it  in the next match
+        let exhaustive_mathc = |s: &str| -> bool {
+            (0..s.len())
+                .map(|offset| &s[offset..])
+                .any(|s| self.match_str(s))
+        };
+
+        match &self.tokens[0] {
+            Token::LineAnchor(_) => self.match_str(s),
+            _ =>exhaustive_mathc(s),
+        }
     }
 
     fn match_str(&self, input_line: &str) -> bool {
@@ -109,7 +132,7 @@ fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
                 )))
             }
         },
-        Some('^') => get_start(chars),
+        Some('^') => get_start_tokens(chars),
         Some('[') => get_group_tokens(chars),
         Some(c) => Ok(Some(Token::Literal(c))),
         None => Ok(None),
@@ -139,15 +162,14 @@ fn get_group_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
         }
     }
 }
-fn get_start(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+fn get_start_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     let mut start_tokens = vec![];
     while let Some(token) = get_tokens(chars)? {
         start_tokens.push(token);
     }
     if start_tokens.len() == 0 {
-        return  Err(ParseError::InvalidStart("No thing after ^".to_string()))
-    }
-    else {
+        return Err(ParseError::InvalidStart("No thing after ^".to_string()));
+    } else {
         Ok(Some(Token::LineAnchor(start_tokens)))
     }
 }
@@ -227,7 +249,7 @@ fn test_parsing_match_line_anchor() {
             Token::Literal('b'),
             Token::Literal('c'),
             Token::CharClass(CharClass::Digit),
-            Token::CharClass(CharClass::Identifier)
+            Token::CharClass(CharClass::Identifier),
         ])],
     };
     assert_eq!(parsed, expected);
