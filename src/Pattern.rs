@@ -8,7 +8,8 @@ pub enum Token {
     Literal(char),
     CharClass(CharClass),
     GroupClass(GroupClass),
-    LineAnchor(Vec<Token>),
+    SOL(Vec<Token>), // Start Of Line
+    EOL(Vec<Token>), // End Of Line
 }
 
 #[derive(Debug, PartialEq)]
@@ -34,7 +35,8 @@ impl Token {
             {
                 Some(skip(str, 1))
             }
-            Self::LineAnchor(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
+            Self::SOL(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
+            Self::EOL(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
             _ => None,
         }
     }
@@ -65,7 +67,8 @@ pub enum ParseError {
     Unclosed(String),      // e.g. missing ]
     InvalidEscape(String), // e.g. \q
     UnexpectedEof(String), // e.g. alone \
-    InvalidStart(String),
+    InvalidStart(String),  // e.g. ^
+    InvalidEnd(String),    // e.g. $
 }
 
 #[derive(Debug, PartialEq)]
@@ -79,7 +82,7 @@ impl FromStr for Pattern {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut tokens = vec![];
         let mut chars = s.chars();
-
+        //start Parsing
         while let Some(token) = get_tokens(&mut chars)? {
             tokens.push(token);
         }
@@ -97,7 +100,11 @@ impl Pattern {
         };
 
         match &self.tokens[0] {
-            Token::LineAnchor(_) => self.match_str(s),
+            Token::SOL(_) => self.match_str(s),
+            Token::EOL(_) => {
+                let reversed_str: String = s.chars().rev().collect();
+                self.match_str(reversed_str.as_str())
+            }
             _ => exhaustive_mathc(s),
         }
     }
@@ -114,8 +121,14 @@ impl Pattern {
         true
     }
 }
-
+// Parser Start Point
 fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+    // check if SOL
+    let las_char = chars.as_str().chars().last();
+    if let Some('$') = las_char {
+        return get_end_tokens(&mut remove_last_char(chars).chars());
+    }
+    //if not SOL do normal Parsing
     match chars.next() {
         Some('\\') => match chars
             .next()
@@ -161,6 +174,12 @@ fn get_group_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
         }
     }
 }
+fn remove_last_char<'a>(chars: &'a mut Chars) -> String {
+    let mut old_chars: Vec<char> = chars.collect();
+    old_chars.pop();
+    let new_str: String = old_chars.iter().collect();
+    new_str
+}
 fn get_start_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     let mut start_tokens = vec![];
     while let Some(token) = get_tokens(chars)? {
@@ -169,7 +188,20 @@ fn get_start_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     if start_tokens.len() == 0 {
         return Err(ParseError::InvalidStart("No thing after ^".to_string()));
     } else {
-        Ok(Some(Token::LineAnchor(start_tokens)))
+        Ok(Some(Token::SOL(start_tokens)))
+    }
+}
+
+fn get_end_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+    let mut end_tokens = vec![];
+    while let Some(token) = get_tokens(chars)? {
+        end_tokens.push(token);
+    }
+    if end_tokens.len() == 0 {
+        return Err(ParseError::InvalidEnd("No thing before $".to_string()));
+    } else {
+        end_tokens.reverse();
+        Ok(Some(Token::EOL(end_tokens)))
     }
 }
 // get_next char and keeping the parser iterator as it was before calling this function
@@ -238,17 +270,33 @@ fn test_parsing_match_one_class() {
     assert_eq!(parsed, expected);
 }
 #[test]
-fn test_parsing_match_line_anchor() {
+fn test_parsing_match_sol() {
     let s = "^abc\\d\\w";
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![Token::LineAnchor(vec![
+        tokens: vec![Token::SOL(vec![
             Token::Literal('a'),
             Token::Literal('b'),
             Token::Literal('c'),
             Token::CharClass(CharClass::Digit),
             Token::CharClass(CharClass::Identifier),
+        ])],
+    };
+    assert_eq!(parsed, expected);
+}
+#[test]
+fn test_parsing_match_eol() {
+    let s = "abc\\d\\w$";
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        tokens: vec![Token::EOL(vec![
+            Token::CharClass(CharClass::Identifier),
+            Token::CharClass(CharClass::Digit),
+            Token::Literal('c'),
+            Token::Literal('b'),
+            Token::Literal('a'),
         ])],
     };
     assert_eq!(parsed, expected);
