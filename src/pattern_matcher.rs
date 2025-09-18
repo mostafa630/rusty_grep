@@ -59,10 +59,18 @@ fn test_match_pattern_on_identifier() {
 }
 
 #[test]
-fn test_match_pattern_on_line_anchor() {
+fn test_match_pattern_on_sol() {
     let pattern_matcher = PatternMatcher {
         pattern: "^abc\\d\\wfg\\d".to_string(),
         input_line: "abc5_fg5".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
+#[test]
+fn test_match_pattern_on_eol() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "abc\\d\\wfg\\d$".to_string(),
+        input_line: "sadasd135abc5_fg5".to_string(),
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }
