@@ -8,8 +8,9 @@ pub enum Token {
     Literal(char),
     CharClass(CharClass),
     GroupClass(GroupClass),
-    SOL(Vec<Token>), // Start Of Line
-    EOL(Vec<Token>), // End Of Line
+    SOL(Vec<Token>),   // Start Of Line
+    EOL(Vec<Token>),   // End Of Line
+    Exact(Vec<Token>), // ^....$
 }
 
 #[derive(Debug, PartialEq)]
@@ -22,6 +23,13 @@ pub enum CharClass {
 pub enum GroupClass {
     MatchOne(Vec<Token>),
     MatchNone(Vec<Token>),
+}
+#[derive(Debug, PartialEq)]
+pub enum Anchor {
+    None,  // no anchors
+    Start, // ^abc
+    End,   // abc$
+    Both,  // ^abc$
 }
 
 impl Token {
@@ -67,8 +75,8 @@ pub enum ParseError {
     Unclosed(String),      // e.g. missing ]
     InvalidEscape(String), // e.g. \q
     UnexpectedEof(String), // e.g. alone \
-    InvalidStart(String),  // e.g. ^
-    InvalidEnd(String),    // e.g. $
+    InvalidPattern(String),
+    InvalidAnchorType,
 }
 
 #[derive(Debug, PartialEq)]
@@ -105,6 +113,13 @@ impl Pattern {
                 let reversed_str: String = s.chars().rev().collect();
                 self.match_str(reversed_str.as_str())
             }
+            Token::Exact(_) => {
+                if self.tokens.len() != s.len() {
+                    return false;
+                } else {
+                    self.match_str(s)
+                }
+            }
             _ => exhaustive_mathc(s),
         }
     }
@@ -124,9 +139,20 @@ impl Pattern {
 // Parser Start Point
 fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
     // check if SOL
-    let las_char = chars.as_str().chars().last();
-    if let Some('$') = las_char {
-        return get_end_tokens(&mut remove_last_char(chars).chars());
+    let last_char = chars.as_str().chars().last();
+    let first_char = chars.as_str().chars().nth(0);
+    if let Some('$') = last_char {
+        if let Some('^') = first_char {
+            // Exact
+            let s1 = remove_char_at(0, chars);
+            let s2 = remove_char_at(s1.len() - 1, chars);
+            return get_anchor_tokens(&mut s2.chars(), Anchor::Both);
+        }
+        //EOL
+        return get_anchor_tokens(
+            &mut remove_char_at(chars.as_str().len() - 1, chars).chars(),
+            Anchor::End,
+        );
     }
     //if not SOL do normal Parsing
     match chars.next() {
@@ -144,7 +170,7 @@ fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
                 )))
             }
         },
-        Some('^') => get_start_tokens(chars),
+        Some('^') => get_anchor_tokens(chars, Anchor::Start),
         Some('[') => get_group_tokens(chars),
         Some(c) => Ok(Some(Token::Literal(c))),
         None => Ok(None),
@@ -174,40 +200,31 @@ fn get_group_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
         }
     }
 }
-fn remove_last_char<'a>(chars: &'a mut Chars) -> String {
-    let mut old_chars: Vec<char> = chars.collect();
-    old_chars.pop();
-    let mut new_str: String = old_chars.iter().collect();
-
-    //remove the first char also if it was ^
-    if new_str.starts_with('^') {  //handle that case "^abc$"  so it will retuen abc
-        new_str.remove(0); 
-    }
-    new_str
-}
-fn get_start_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
-    let mut start_tokens = vec![];
+fn get_anchor_tokens(chars: &mut Chars, AnchorType: Anchor) -> Result<Option<Token>, ParseError> {
+    let mut tokens = vec![];
     while let Some(token) = get_tokens(chars)? {
-        start_tokens.push(token);
+        tokens.push(token);
     }
-    if start_tokens.len() == 0 {
-        return Err(ParseError::InvalidStart("No thing after ^".to_string()));
+    if tokens.len() == 0 {
+        return Err(ParseError::InvalidPattern(
+            "No thing after ^ or nothing before$".to_string(),
+        ));
     } else {
-        Ok(Some(Token::SOL(start_tokens)))
+        match AnchorType {
+            Anchor::Start => Ok(Some(Token::SOL(tokens))),
+            Anchor::End => {
+                tokens.reverse();
+                Ok(Some(Token::EOL(tokens)))
+            }
+            Anchor::Both => Ok(Some(Token::Exact(tokens))),
+            _ => Err(ParseError::InvalidAnchorType),
+        }
     }
 }
-
-fn get_end_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
-    let mut end_tokens = vec![];
-    while let Some(token) = get_tokens(chars)? {
-        end_tokens.push(token);
-    }
-    if end_tokens.len() == 0 {
-        return Err(ParseError::InvalidEnd("No thing before $".to_string()));
-    } else {
-        end_tokens.reverse();
-        Ok(Some(Token::EOL(end_tokens)))
-    }
+fn remove_char_at<'a>(idx: usize, chars: &'a mut Chars) -> String {
+    let mut str: String = chars.collect();
+    str.remove(idx);
+    str
 }
 // get_next char and keeping the parser iterator as it was before calling this function
 fn get_next_char(chars: &mut Chars) -> Option<char> {
@@ -261,7 +278,7 @@ fn test_parsing_literals() {
 }
 
 #[test]
-fn test_parsing_match_one_class() {
+fn test_parsing_one_class() {
     let s = "[abc]";
     let parsed: Pattern = s.parse().unwrap();
 
@@ -275,7 +292,7 @@ fn test_parsing_match_one_class() {
     assert_eq!(parsed, expected);
 }
 #[test]
-fn test_parsing_match_sol() {
+fn test_parsing_sol() {
     let s = "^abc\\d\\w";
     let parsed: Pattern = s.parse().unwrap();
 
@@ -291,10 +308,9 @@ fn test_parsing_match_sol() {
     assert_eq!(parsed, expected);
 }
 #[test]
-fn test_parsing_match_eol() {
+fn test_parsing_eol() {
     let s = "abc\\d\\w$";
     let parsed: Pattern = s.parse().unwrap();
-
     let expected = Pattern {
         tokens: vec![Token::EOL(vec![
             Token::CharClass(CharClass::Identifier),
@@ -326,7 +342,7 @@ fn test_parsing_combination() {
     assert_eq!(parsed, expected);
 }
 #[test]
-fn test_parsing_match_none_class() {
+fn test_parsing_none_class() {
     let s = "[^abc]";
     let parsed: Pattern = s.parse().unwrap();
 
