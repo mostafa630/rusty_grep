@@ -10,7 +10,7 @@ pub enum Token {
     GroupClass(GroupClass),
     SOL(Vec<Token>),   // Start Of Line
     EOL(Vec<Token>),   // End Of Line
-    Exact(Vec<Token>), // ^....$
+    Exact(Vec<Token>), // ^....$  
 }
 
 #[derive(Debug, PartialEq)]
@@ -26,7 +26,6 @@ pub enum GroupClass {
 }
 #[derive(Debug, PartialEq)]
 pub enum Anchor {
-    None,  // no anchors
     Start, // ^abc
     End,   // abc$
     Both,  // ^abc$
@@ -45,6 +44,7 @@ impl Token {
             }
             Self::SOL(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
             Self::EOL(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
+            Self::Exact(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
             _ => None,
         }
     }
@@ -99,28 +99,31 @@ impl FromStr for Pattern {
 }
 
 impl Pattern {
-    pub fn matches(&self, s: &str) -> bool {
+    pub fn matches(&self, input: &str) -> bool {
         // just a Closure to call it  in the next match
-        let exhaustive_mathc = |s: &str| -> bool {
-            (0..s.len())
-                .map(|offset| &s[offset..])
-                .any(|s| self.match_str(s))
+        let exhaustive_mathc = |input: &str| -> bool {
+            (0..input.len())
+                .map(|offset| &input[offset..])
+                .any(|input| self.match_str(input))
         };
 
         match &self.tokens[0] {
-            Token::SOL(_) => self.match_str(s),
+            Token::SOL(_) => self.match_str(input),
             Token::EOL(_) => {
-                let reversed_str: String = s.chars().rev().collect();
+                let reversed_str: String = input.chars().rev().collect();
                 self.match_str(reversed_str.as_str())
             }
-            Token::Exact(_) => {
-                if self.tokens.len() != s.len() {
+            Token::Exact(exact_tokens) => {
+                println!("{:?}" , &self.tokens);
+                if exact_tokens.len() != input.len() {
+                    
                     return false;
                 } else {
-                    self.match_str(s)
+                    println!("herereeeeeeeeee");
+                    self.match_str(input)
                 }
             }
-            _ => exhaustive_mathc(s),
+            _ => exhaustive_mathc(input),
         }
     }
 
@@ -145,7 +148,7 @@ fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
         if let Some('^') = first_char {
             // Exact
             let s1 = remove_char_at(0, chars);
-            let s2 = remove_char_at(s1.len() - 1, chars);
+            let s2 = remove_char_at(s1.len() - 1, &mut s1.chars());
             return get_anchor_tokens(&mut s2.chars(), Anchor::Both);
         }
         //EOL

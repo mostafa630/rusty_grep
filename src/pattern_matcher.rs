@@ -83,3 +83,11 @@ fn test_match_pattern_on_combinations() {
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }
+#[test]
+fn test_match_pattern_on_exact_match() {
+ let pattern_matcher = PatternMatcher {
+        pattern: "^strawberry$".to_string(),
+        input_line: "strawberry".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
