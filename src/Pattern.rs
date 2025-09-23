@@ -32,26 +32,35 @@ pub enum Anchor {
     Both,  // ^abc$
 }
 
+#[derive(Debug )]
+pub enum Remaining<'a>{
+    Single(Option<&'a str>),
+    Multiple(Vec<Option<&'a str>>)
+
+}
+
+
+
 impl Token {
     // take string match  try to match the token from the start of the str
     // if ok retuen the rest of the str
-    pub fn _match<'a>(&self, str: &'a str) -> Option<Vec<Option<&'a str>>> {
+    pub fn _match<'a>(&self, str: &'a str) -> Option<Remaining<'a>> {
         println!("strinnnnnnnnnnnnn = {}", str);
         match self {
             Self::Literal(c) if str.chars().next()? == *c => {
                 println!("charrrrrrrrrrr = {c}");
                 println!("herereeeeeeeeeeee");
-                Some(vec![Some(skip(str, 1))])
+                Some(Remaining::Single(Some(skip(str, 1))))
             }
 
             Self::CharClass(char_class)
                 if Self::match_char_class(char_class, str.chars().next()?) =>
             {
-                Some(vec![Some(skip(str, 1))])
+                Some(Remaining::Single(Some(skip(str, 1))))
             }
-            Self::SOL(sub_tokens) => Some(vec![Self::match_group(sub_tokens.as_slice(), str)]),
-            Self::EOL(sub_tokens) => Some(vec![Self::match_group(sub_tokens.as_slice(), str)]),
-            Self::Exact(sub_tokens) => Some(vec![Self::match_group(sub_tokens.as_slice(), str)]),
+            Self::SOL(sub_tokens) => Some(Remaining::Single(Self::match_group(sub_tokens.as_slice(), str))),
+            Self::EOL(sub_tokens) => Some(Remaining::Single(Self::match_group(sub_tokens.as_slice(), str))),
+            Self::Exact(sub_tokens) =>Some(Remaining::Single(Self::match_group(sub_tokens.as_slice(), str))),
             Self::OneORMore(token) => Self::match_one_or_more(token, str),
             _ => None,
         }
@@ -66,26 +75,31 @@ impl Token {
     pub fn match_one_or_more<'a>(
         literal_token: &Box<Token>,
         s: &'a str,
-    ) -> Option<Vec<Option<&'a str>>> {
-        let mut remanings = vec![];
+    ) -> Option<Remaining<'a>> {
+        let mut remainings: Vec<Option<&'a str>> = Vec::new();
 
         // First, try matching the token at least once
         if let Some(rem) = literal_token._match(s) {
-            match rem[0] {
-                Some(_) => remanings.push(rem[0]),
-                None => return None,
+            match rem {
+                Remaining::Single(remaining_str) => remainings.push(remaining_str),
+                _ => return None,
             }
-            // here I sure that rem contain only one str
         } else {
-            return None; // doesn't matc even one
+            return None; // doesn't match even one
         }
 
-        println!(" lllllllleeeeeeeeeen = {:?}", remanings.len());
-        while let Some(rem) = literal_token._match(remanings.last().unwrap().unwrap()) {
-            remanings.push(rem[0]);
+        while let Some(last) = remainings.last().and_then(|opt| *opt) {
+            if let Some(rem) = literal_token._match(last) {
+                match rem {
+                    Remaining::Single(remaining_str) => remainings.push(remaining_str),
+                    _ => break,
+                }
+            } else {
+                break;
+            }
         }
 
-        Some(remanings)
+        Some(Remaining::Multiple(remainings))
     }
 
     pub fn match_group<'a>(tokens: &[Token], str: &'a str) -> Option<&'a str> {
@@ -94,8 +108,12 @@ impl Token {
         }
 
         let (current_token, remaning_tokens) = tokens.split_first().unwrap();
-        if let Some(remaning_str) = current_token._match(str) {
-            Self::match_group(remaning_tokens, remaning_str[0].unwrap())
+        if let Some(Remaining::Single(remaining_str)) = current_token._match(str) {
+            if let Some(remaining_str) = remaining_str {
+                Self::match_group(remaning_tokens, remaining_str)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -166,20 +184,24 @@ impl Pattern {
             let (first, rest_tokens) = tokens.split_first().unwrap();
             println!("First token = {:?}", first);
             println!("input = {}", input);
-            if let Some(remaining_options) = first._match(input) {
-                // Try all remaining options
-                for maybe_remaining in remaining_options {
-                    if let Some(remaining) = maybe_remaining {
-                        if match_tokens(rest_tokens, remaining) {
-                            return true; // found a successful match
+            if let Some(remaining) = first._match(input) {
+                match remaining{
+                    Remaining::Single(Some(remaining_str)) => return match_tokens(rest_tokens, remaining_str),
+                    Remaining::Multiple(remaining_strs) => {
+                    for remaining in remaining_strs {
+                        if let Some(remaining_str) = remaining {
+                            if match_tokens(rest_tokens, remaining_str) {
+                                return true; // found a successful match
+                            }
                         }
                     }
+                    return false;
+                    }
+                    
+                    _=> return false
                 }
-            } // in most of cases the remaining_options wil contain one str
-              //so it is like match the remaining str with remaining tokens
-              //unless the one or more that can return more than one remaning str
-              // so we can hande that case     pattern = "ta+aab" input = "taaaaaaab"s
-
+                // Try all remaining options
+            } 
             false // no match found
         }
 
@@ -290,7 +312,7 @@ fn get_next_char(chars: &mut Chars) -> Option<char> {
     let mut clone = chars.clone();
     clone.next()
 }
-fn skip(s: &str, chars: usize) -> &str {
+fn skip<'a>(s: &'a str, chars: usize) -> &'a str {
     let mut iter = s.chars();
     for _ in 0..chars {
         iter.next();
