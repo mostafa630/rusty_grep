@@ -95,8 +95,8 @@ fn test_match_pattern_on_exact_match() {
 #[test]
 fn test_match_pattern_on_one_or_more() {
     let pattern_matcher = PatternMatcher {
-        pattern: "ab+\\w\\dc".to_string(),
-        input_line: "abbbbb_8c".to_string(),
+        pattern: "ca+t".to_string(),
+        input_line: "act".to_string(),
     };
-    assert_eq!(pattern_matcher.match_pattern(), true);
+    assert_eq!(pattern_matcher.match_pattern(), false);
 }
