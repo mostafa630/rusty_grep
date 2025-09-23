@@ -32,24 +32,22 @@ pub enum Anchor {
     Both,  // ^abc$
 }
 
-#[derive(Debug )]
-pub enum Remaining<'a>{
+#[derive(Debug)]
+pub enum Remaining<'a> {
     Single(Option<&'a str>),
-    Multiple(Vec<Option<&'a str>>)
-
+    Multiple(Vec<Option<&'a str>>),
 }
 
-
-
 impl Token {
-    // take string match  try to match the token from the start of the str
-    // if ok retuen the rest of the str
+    
+
+    // ------------------------------------------------------------------------------//
+    //                                 Token Matcher                                 //
+    // ------------------------------------------------------------------------------//
+
     pub fn _match<'a>(&self, str: &'a str) -> Option<Remaining<'a>> {
-        println!("strinnnnnnnnnnnnn = {}", str);
         match self {
             Self::Literal(c) if str.chars().next()? == *c => {
-                println!("charrrrrrrrrrr = {c}");
-                println!("herereeeeeeeeeeee");
                 Some(Remaining::Single(Some(skip(str, 1))))
             }
 
@@ -58,24 +56,31 @@ impl Token {
             {
                 Some(Remaining::Single(Some(skip(str, 1))))
             }
-            Self::SOL(sub_tokens) => Some(Remaining::Single(Self::match_group(sub_tokens.as_slice(), str))),
-            Self::EOL(sub_tokens) => Some(Remaining::Single(Self::match_group(sub_tokens.as_slice(), str))),
-            Self::Exact(sub_tokens) =>Some(Remaining::Single(Self::match_group(sub_tokens.as_slice(), str))),
+            Self::SOL(sub_tokens) => Some(Remaining::Single(Self::match_group(
+                sub_tokens.as_slice(),
+                str,
+            ))),
+            Self::EOL(sub_tokens) => Some(Remaining::Single(Self::match_group(
+                sub_tokens.as_slice(),
+                str,
+            ))),
+            Self::Exact(sub_tokens) => Some(Remaining::Single(Self::match_group(
+                sub_tokens.as_slice(),
+                str,
+            ))),
             Self::OneORMore(token) => Self::match_one_or_more(token, str),
             _ => None,
         }
     }
 
-    pub fn match_char_class(class: &CharClass, c: char) -> bool {
+    fn match_char_class(class: &CharClass, c: char) -> bool {
         match class {
             CharClass::Digit => c.is_ascii_digit(),
             CharClass::Identifier => c.is_ascii_alphabetic() || c == '_',
         }
     }
-    pub fn match_one_or_more<'a>(
-        literal_token: &Box<Token>,
-        s: &'a str,
-    ) -> Option<Remaining<'a>> {
+
+    fn match_one_or_more<'a>(literal_token: &Box<Token>, s: &'a str) -> Option<Remaining<'a>> {
         let mut remainings: Vec<Option<&'a str>> = Vec::new();
 
         // First, try matching the token at least once
@@ -102,7 +107,7 @@ impl Token {
         Some(Remaining::Multiple(remainings))
     }
 
-    pub fn match_group<'a>(tokens: &[Token], str: &'a str) -> Option<&'a str> {
+    fn match_group<'a>(tokens: &[Token], str: &'a str) -> Option<&'a str> {
         if tokens.is_empty() {
             return Some(str);
         }
@@ -134,6 +139,8 @@ pub struct Pattern {
     pub tokens: Vec<Token>,
 }
 
+
+// ----------------------- Start point of Parsing ---------------------------------- //     
 impl FromStr for Pattern {
     type Err = ParseError;
 
@@ -141,7 +148,7 @@ impl FromStr for Pattern {
         let mut tokens = vec![];
         let mut chars = s.chars();
         //start Parsing
-        while let Some(token) = get_tokens(&mut chars)? {
+        while let Some(token) = Self::get_tokens(&mut chars)? {
             tokens.push(token);
         }
         Ok(Self { tokens })
@@ -149,6 +156,116 @@ impl FromStr for Pattern {
 }
 
 impl Pattern {
+
+
+    // ------------------------------------------------------------------------------//
+    //                                 Parsing Logic                                 //
+    // ------------------------------------------------------------------------------//
+
+    // main Parsing Function
+    fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+        // check if SOL
+        let last_char = chars.as_str().chars().last();
+        let first_char = chars.as_str().chars().nth(0);
+        if let Some('$') = last_char {
+            if let Some('^') = first_char {
+                // Exact
+                let s1 = remove_char_at(0, chars);
+                let s2 = remove_char_at(s1.len() - 1, &mut s1.chars());
+                return Self::get_anchor_tokens(&mut s2.chars(), Anchor::Both);
+            }
+            //EOL
+            return Self::get_anchor_tokens(
+                &mut remove_char_at(chars.as_str().len() - 1, chars).chars(),
+                Anchor::End,
+            );
+        }
+        //if not SOL do normal Parsing
+        match chars.next() {
+            Some('\\') => match chars
+                .next()
+                .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
+            {
+                'd' => Ok(Some(Token::CharClass(CharClass::Digit))),
+                'w' => Ok(Some(Token::CharClass(CharClass::Identifier))),
+                '\\' => Ok(Some(Token::Literal('\\'))),
+                c => {
+                    return Err(ParseError::InvalidEscape(format!(
+                        "\\ doesn't allow {} after it",
+                        c
+                    )))
+                }
+            },
+            Some('^') => Self::get_anchor_tokens(chars, Anchor::Start),
+            Some('[') => Self::get_group_tokens(chars),
+            Some(c) => {
+                let next_char = get_next_char(chars);
+                match next_char {
+                    Some('+') => {
+                        chars.next(); // consume +
+                        Ok(Some(Token::OneORMore(Box::new(Token::Literal(c)))))
+                    }
+                    _ => Ok(Some(Token::Literal(c))),
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn get_group_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
+        let mut tokens = vec![];
+        let is_inverted = match get_next_char(chars) {
+            Some('^') => {
+                chars.next(); // consume the '^' character
+                true
+            }
+            _ => false,
+        };
+        loop {
+            match chars.next() {
+                Some(']') => {
+                    if is_inverted {
+                        break Ok(Some(Token::GroupClass(GroupClass::MatchNone(tokens))));
+                    } else {
+                        break Ok(Some(Token::GroupClass(GroupClass::MatchOne(tokens))));
+                    }
+                }
+                Some(c) => tokens.push(Token::Literal(c)),
+                None => return Err(ParseError::Unclosed(format!("Missing ]"))),
+            }
+        }
+    }
+
+    fn get_anchor_tokens(
+        chars: &mut Chars,
+        AnchorType: Anchor,
+    ) -> Result<Option<Token>, ParseError> {
+        let mut tokens = vec![];
+        while let Some(token) = Self::get_tokens(chars)? {
+            tokens.push(token);
+        }
+        if tokens.len() == 0 {
+            return Err(ParseError::InvalidPattern(
+                "No thing after ^ or nothing before$".to_string(),
+            ));
+        } else {
+            match AnchorType {
+                Anchor::Start => Ok(Some(Token::SOL(tokens))),
+                Anchor::End => {
+                    tokens.reverse();
+                    Ok(Some(Token::EOL(tokens)))
+                }
+                Anchor::Both => Ok(Some(Token::Exact(tokens))),
+                _ => Err(ParseError::InvalidAnchorType),
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------------//
+    //                                 Matching Logic                                //
+    // ------------------------------------------------------------------------------//
+
+    // start point of matching
     pub fn matches(&self, input: &str) -> bool {
         // just a Closure to call it  in the next match
         let exhaustive_mathc = |input: &str| -> bool {
@@ -185,23 +302,25 @@ impl Pattern {
             println!("First token = {:?}", first);
             println!("input = {}", input);
             if let Some(remaining) = first._match(input) {
-                match remaining{
-                    Remaining::Single(Some(remaining_str)) => return match_tokens(rest_tokens, remaining_str),
+                match remaining {
+                    Remaining::Single(Some(remaining_str)) => {
+                        return match_tokens(rest_tokens, remaining_str)
+                    }
                     Remaining::Multiple(remaining_strs) => {
-                    for remaining in remaining_strs {
-                        if let Some(remaining_str) = remaining {
-                            if match_tokens(rest_tokens, remaining_str) {
-                                return true; // found a successful match
+                        for remaining in remaining_strs {
+                            if let Some(remaining_str) = remaining {
+                                if match_tokens(rest_tokens, remaining_str) {
+                                    return true; // found a successful match
+                                }
                             }
                         }
+                        return false;
                     }
-                    return false;
-                    }
-                    
-                    _=> return false
+
+                    _ => return false,
                 }
                 // Try all remaining options
-            } 
+            }
             false // no match found
         }
 
@@ -209,99 +328,7 @@ impl Pattern {
     }
 }
 // Parser Start Point
-fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
-    // check if SOL
-    let last_char = chars.as_str().chars().last();
-    let first_char = chars.as_str().chars().nth(0);
-    if let Some('$') = last_char {
-        if let Some('^') = first_char {
-            // Exact
-            let s1 = remove_char_at(0, chars);
-            let s2 = remove_char_at(s1.len() - 1, &mut s1.chars());
-            return get_anchor_tokens(&mut s2.chars(), Anchor::Both);
-        }
-        //EOL
-        return get_anchor_tokens(
-            &mut remove_char_at(chars.as_str().len() - 1, chars).chars(),
-            Anchor::End,
-        );
-    }
-    //if not SOL do normal Parsing
-    match chars.next() {
-        Some('\\') => match chars
-            .next()
-            .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
-        {
-            'd' => Ok(Some(Token::CharClass(CharClass::Digit))),
-            'w' => Ok(Some(Token::CharClass(CharClass::Identifier))),
-            '\\' => Ok(Some(Token::Literal('\\'))),
-            c => {
-                return Err(ParseError::InvalidEscape(format!(
-                    "\\ doesn't allow {} after it",
-                    c
-                )))
-            }
-        },
-        Some('^') => get_anchor_tokens(chars, Anchor::Start),
-        Some('[') => get_group_tokens(chars),
-        Some(c) => {
-            let next_char = get_next_char(chars);
-            match next_char {
-                Some('+') => {
-                    chars.next(); // consume +
-                    Ok(Some(Token::OneORMore(Box::new(Token::Literal(c)))))
-                }
-                _ => Ok(Some(Token::Literal(c))),
-            }
-        }
-        None => Ok(None),
-    }
-}
 
-fn get_group_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
-    let mut tokens = vec![];
-    let is_inverted = match get_next_char(chars) {
-        Some('^') => {
-            chars.next(); // consume the '^' character
-            true
-        }
-        _ => false,
-    };
-    loop {
-        match chars.next() {
-            Some(']') => {
-                if is_inverted {
-                    break Ok(Some(Token::GroupClass(GroupClass::MatchNone(tokens))));
-                } else {
-                    break Ok(Some(Token::GroupClass(GroupClass::MatchOne(tokens))));
-                }
-            }
-            Some(c) => tokens.push(Token::Literal(c)),
-            None => return Err(ParseError::Unclosed(format!("Missing ]"))),
-        }
-    }
-}
-fn get_anchor_tokens(chars: &mut Chars, AnchorType: Anchor) -> Result<Option<Token>, ParseError> {
-    let mut tokens = vec![];
-    while let Some(token) = get_tokens(chars)? {
-        tokens.push(token);
-    }
-    if tokens.len() == 0 {
-        return Err(ParseError::InvalidPattern(
-            "No thing after ^ or nothing before$".to_string(),
-        ));
-    } else {
-        match AnchorType {
-            Anchor::Start => Ok(Some(Token::SOL(tokens))),
-            Anchor::End => {
-                tokens.reverse();
-                Ok(Some(Token::EOL(tokens)))
-            }
-            Anchor::Both => Ok(Some(Token::Exact(tokens))),
-            _ => Err(ParseError::InvalidAnchorType),
-        }
-    }
-}
 fn remove_char_at<'a>(idx: usize, chars: &'a mut Chars) -> String {
     let mut str: String = chars.collect();
     str.remove(idx);
