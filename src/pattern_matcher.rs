@@ -85,9 +85,18 @@ fn test_match_pattern_on_combinations() {
 }
 #[test]
 fn test_match_pattern_on_exact_match() {
- let pattern_matcher = PatternMatcher {
+    let pattern_matcher = PatternMatcher {
         pattern: "^strawberry$".to_string(),
         input_line: "strawberry".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
+
+#[test]
+fn test_match_pattern_on_one_or_more() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "ab+\\w\\dc".to_string(),
+        input_line: "abbbbb_8c".to_string(),
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }

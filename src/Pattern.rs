@@ -10,7 +10,8 @@ pub enum Token {
     GroupClass(GroupClass),
     SOL(Vec<Token>),   // Start Of Line
     EOL(Vec<Token>),   // End Of Line
-    Exact(Vec<Token>), // ^....$  
+    Exact(Vec<Token>), // ^....$
+    OneORMore(Box<Token>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,6 +46,15 @@ impl Token {
             Self::SOL(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
             Self::EOL(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
             Self::Exact(sub_tokens) => Self::match_group(sub_tokens.as_slice(), str),
+            Self::OneORMore(token) => {
+                let len_before = str.len();
+                let str_after = self.match_one_or_more(token, str);
+                if str_after.len() != len_before {
+                    Some(str_after)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -54,6 +64,21 @@ impl Token {
             CharClass::Digit => c.is_ascii_digit(),
             CharClass::Identifier => c.is_ascii_alphabetic() || c == '_',
         }
+    }
+    pub fn match_one_or_more<'a>(&self, literal_token: &Box<Token>, str: &'a str) -> &'a str {
+        let mut consumed = vec![];
+        let mut remaining = str;
+
+        // Match at least once
+        remaining = literal_token._match(remaining)?;
+        consumed.push(remaining);
+
+        // Keep matching greedily
+        while let Some(next) = literal_token._match(remaining) {
+            remaining = next;
+            consumed.push(remaining);
+        }
+        todo!()
     }
 
     pub fn match_group<'a>(tokens: &[Token], str: &'a str) -> Option<&'a str> {
@@ -114,12 +139,10 @@ impl Pattern {
                 self.match_str(reversed_str.as_str())
             }
             Token::Exact(exact_tokens) => {
-                println!("{:?}" , &self.tokens);
+                println!("{:?}", &self.tokens);
                 if exact_tokens.len() != input.len() {
-                    
                     return false;
                 } else {
-                    println!("herereeeeeeeeee");
                     self.match_str(input)
                 }
             }
@@ -175,7 +198,16 @@ fn get_tokens(chars: &mut Chars) -> Result<Option<Token>, ParseError> {
         },
         Some('^') => get_anchor_tokens(chars, Anchor::Start),
         Some('[') => get_group_tokens(chars),
-        Some(c) => Ok(Some(Token::Literal(c))),
+        Some(c) => {
+            let next_char = get_next_char(chars);
+            match next_char {
+                Some('+') => {
+                    chars.next(); // consume +
+                    Ok(Some(Token::OneORMore(Box::new(Token::Literal(c)))))
+                }
+                _ => Ok(Some(Token::Literal(c))),
+            }
+        }
         None => Ok(None),
     }
 }
@@ -356,5 +388,22 @@ fn test_parsing_none_class() {
             Token::Literal('c'),
         ]))],
     };
+    assert_eq!(parsed, expected);
+}
+#[test]
+fn test_parsing_one_or_more() {
+    let s = "abc+\\w\\d";
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        tokens: vec![
+            Token::Literal('a'),
+            Token::Literal('b'),
+            Token::OneORMore(Box::new(Token::Literal('c'))),
+            Token::CharClass(CharClass::Identifier),
+            Token::CharClass(CharClass::Digit),
+        ],
+    };
+
     assert_eq!(parsed, expected);
 }
