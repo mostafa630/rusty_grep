@@ -12,6 +12,7 @@ pub enum Token {
     EOL(Vec<Token>),   // End Of Line
     Exact(Vec<Token>), // ^....$
     OneORMore(Box<Token>),
+    OneOrNone(Box<Token>)
 }
 
 #[derive(Debug, PartialEq)]
@@ -69,6 +70,8 @@ impl Token {
                 str,
             ))),
             Self::OneORMore(token) => Self::match_one_or_more(token, str),
+            Self::OneOrNone(token) => Self::match_one_or_none(token, str),
+            
             _ => None,
         }
     }
@@ -105,6 +108,28 @@ impl Token {
         }
 
         Some(Remaining::Multiple(remainings))
+    }
+
+    fn match_one_or_none<'a>(literal_token: &Box<Token>, s: &'a str) -> Option<Remaining<'a>> {
+         let mut remainings: Vec<Option<&'a str>> = Vec::new();
+        
+        
+        match literal_token._match(s){
+            // if the char matc if we consume directly that can lead to problem
+            // if that is the case :   pattern = ca?at   and input = cat  
+            // so we will return  vector or remaning strs  and in our case  it will contain 2 str
+            // one if we will consume and one if we won't consue  
+            Some(remaning) =>  {
+                remainings.push(Some(s));
+                if let Remaining::Single(remaining_str) = remaning {
+                    remainings.push(remaining_str);
+                };
+                Some(Remaining::Multiple(remainings))
+            },
+            // if the char doesn't match that is fine and return the input with no consuing for any char
+            None => Some(Remaining::Single(Some(s))),
+        }
+
     }
 
     fn match_group<'a>(tokens: &[Token], str: &'a str) -> Option<&'a str> {
@@ -204,6 +229,10 @@ impl Pattern {
                     Some('+') => {
                         chars.next(); // consume +
                         Ok(Some(Token::OneORMore(Box::new(Token::Literal(c)))))
+                    }
+                    Some('?') => {
+                         chars.next(); // consume ?
+                         Ok(Some(Token::OneOrNone(Box::new(Token::Literal(c)))))
                     }
                     _ => Ok(Some(Token::Literal(c))),
                 }
@@ -327,7 +356,6 @@ impl Pattern {
         match_tokens(&self.tokens, input_line)
     }
 }
-// Parser Start Point
 
 fn remove_char_at<'a>(idx: usize, chars: &'a mut Chars) -> String {
     let mut str: String = chars.collect();
@@ -346,6 +374,11 @@ fn skip<'a>(s: &'a str, chars: usize) -> &'a str {
     }
     iter.as_str()
 }
+
+ // ------------------------------------------------------------------------------//
+ //                                 Parsing Tests                                 //
+ // ------------------------------------------------------------------------------//
+
 #[test]
 fn test_parsing_digit_class() {
     let s = r"\d"; // raw string so the backslash is preserved
@@ -480,3 +513,21 @@ fn test_parsing_one_or_more() {
 
     assert_eq!(parsed, expected);
 }
+#[test]
+fn test_parsing_one_or_none() {
+    let s = "abc?\\w\\d";
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        tokens: vec![
+            Token::Literal('a'),
+            Token::Literal('b'),
+            Token::OneOrNone(Box::new(Token::Literal('c'))),
+            Token::CharClass(CharClass::Identifier),
+            Token::CharClass(CharClass::Digit),
+        ],
+    };
+
+    assert_eq!(parsed, expected);
+}
+

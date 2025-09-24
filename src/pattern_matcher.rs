@@ -100,3 +100,13 @@ fn test_match_pattern_on_one_or_more() {
     };
     assert_eq!(pattern_matcher.match_pattern(), false);
 }
+
+#[test]
+fn test_match_pattern_on_one_or_none() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "ca?at".to_string(),
+        input_line: "cat".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
+
