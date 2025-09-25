@@ -134,12 +134,24 @@ impl Token {
             return Some(str);
         }
 
-        let (current_token, remaning_tokens) = tokens.split_first().unwrap();
-        if let Some(Remaining::Single(remaining_str)) = current_token._match(str) {
-            if let Some(remaining_str) = remaining_str {
-                Self::match_group(remaning_tokens, remaining_str)
-            } else {
-                None
+        let (current_token, remaining_tokens) = tokens.split_first().unwrap();
+        if let Some(remaining) = current_token._match(str) {
+            match remaining {
+                Remaining::Single(Some(remaining_str)) => {
+                    Self::match_group(remaining_tokens, remaining_str)
+                }
+                Remaining::Multiple(remaining_strs) => {
+                    // Try each possible remaining string
+                    for remaining_str_opt in remaining_strs {
+                        if let Some(remaining_str) = remaining_str_opt {
+                            if let Some(final_remaining) = Self::match_group(remaining_tokens, remaining_str) {
+                                return Some(final_remaining);
+                            }
+                        }
+                    }
+                    None
+                }
+                _ => None,
             }
         } else {
             None
@@ -635,7 +647,7 @@ fn test_parsing_one_or_none() {
 
 #[test]
 fn test_parsing_alternation() {
-    let s = "cat|dog";
+    let s = "(cat|dog)";
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
