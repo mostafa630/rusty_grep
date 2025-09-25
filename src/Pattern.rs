@@ -171,7 +171,7 @@ impl FromStr for Pattern {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let sub_patterns_strs: Vec<&str> = s.split('|').map(|s| s).collect();
+        let sub_patterns_strs: Vec<String> = Self::expand_pattern(s);
 
         let mut sub_patterns = vec![];
         println!("subpatterns = {:?}", sub_patterns_strs);
@@ -193,6 +193,39 @@ impl FromStr for Pattern {
 }
 
 impl Pattern {
+    fn expand_pattern(pattern: &str) -> Vec<String> {
+        fn helper(s: &str) -> Vec<String> {
+            if let Some(open) = s.find('(') {
+                let close = s[open..]
+                    .find(')')
+                    .map(|i| open + i)
+                    .expect("Unmatched '('");
+
+                let before = &s[..open];
+                let inside = &s[open + 1..close];
+                let after = &s[close + 1..];
+
+                let choices: Vec<&str> = if inside.contains('|') {
+                    inside.split('|').collect()
+                } else {
+                    vec![inside]
+                };
+
+                let mut results = vec![];
+                for choice in choices {
+                    for rest in helper(after) {
+                        results.push(format!("{}{}{}", before, choice, rest));
+                    }
+                }
+                results
+            } else {
+                vec![s.to_string()]
+            }
+        }
+
+        helper(pattern)
+    }
+
     // ------------------------------------------------------------------------------//
     //                                 Parsing Logic                                 //
     // ------------------------------------------------------------------------------//
@@ -217,20 +250,39 @@ impl Pattern {
         }
         //if not SOL do normal Parsing
         match chars.next() {
-            Some('\\') => match chars
-                .next()
-                .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
-            {
-                'd' => Ok(Some(Token::CharClass(CharClass::Digit))),
-                'w' => Ok(Some(Token::CharClass(CharClass::Identifier))),
-                '\\' => Ok(Some(Token::Literal('\\'))),
-                c => {
-                    return Err(ParseError::InvalidEscape(format!(
-                        "\\ doesn't allow {} after it",
-                        c
-                    )))
+            Some('\\') => {
+                let mut token;
+                match chars
+                    .next()
+                    .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
+                {
+                    'd' => token = Token::CharClass(CharClass::Digit),
+                    'w' => token = Token::CharClass(CharClass::Identifier),
+                    '\\' => token = Token::Literal('\\'),
+                    c => {
+                        return Err(ParseError::InvalidEscape(format!(
+                            "\\ doesn't allow {} after it",
+                            c
+                        )))
+                    }
                 }
-            },
+                let next_char = get_next_char(chars);
+                if let Some(char) = next_char {
+                    match char {
+                        '+' => {
+                            chars.next();
+                            Ok(Some(Token::OneORMore(Box::new(token))))
+                        },
+                        '?' => {
+                            chars.next();
+                            Ok(Some(Token::OneOrNone(Box::new(token))))
+                        },
+                        _ => Ok(Some(token)),
+                    }
+                } else {
+                    Ok(Some(token))
+                }
+            }
             Some('^') => Self::get_anchor_tokens(chars, Anchor::Start),
             Some('[') => Self::get_group_tokens(chars),
             Some(c) => {
@@ -599,3 +651,24 @@ fn test_parsing_alternation() {
     };
     assert_eq!(parsed, expected);
 }
+
+#[test]
+fn test_parsing_one_or_more_digit() {
+    let s = "a\\d+c";
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        sub_patterns: vec![
+            SubPattern {
+                tokens: vec![
+                    Token::Literal('a'),
+                    Token::OneORMore(Box::new(Token::CharClass(CharClass::Digit))),
+                    Token::Literal('c'),
+                ],
+            },
+        ],
+    };
+    assert_eq!(parsed, expected);
+}
+
+
