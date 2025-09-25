@@ -118,3 +118,12 @@ fn test_match_pattern_on_wild_card() {
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }
+
+#[test]
+fn test_match_pattern_on_alternation() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "cat|dog".to_string(),
+        input_line: "cat".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}

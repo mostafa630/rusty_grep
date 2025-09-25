@@ -13,7 +13,6 @@ pub enum Token {
     Exact(Vec<Token>), // ^....$
     OneORMore(Box<Token>),
     OneOrNone(Box<Token>),
-    WildCard,
 }
 
 #[derive(Debug, PartialEq)]
@@ -48,6 +47,7 @@ impl Token {
     pub fn _match<'a>(&self, str: &'a str) -> Option<Remaining<'a>> {
         match self {
             Self::Literal(c) if str.chars().next()? == *c || *c == '.' => {
+                // (*c == '.') we add tatht to support wildcard
                 Some(Remaining::Single(Some(skip(str, 1))))
             }
             //Self::WildCard => Some(Remaining::Single(Some(skip(str, 1)))),
@@ -158,6 +158,11 @@ pub enum ParseError {
 
 #[derive(Debug, PartialEq)]
 pub struct Pattern {
+    pub sub_patterns: Vec<SubPattern>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SubPattern {
     pub tokens: Vec<Token>,
 }
 
@@ -166,13 +171,24 @@ impl FromStr for Pattern {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut tokens = vec![];
-        let mut chars = s.chars();
-        //start Parsing
-        while let Some(token) = Self::get_tokens(&mut chars)? {
-            tokens.push(token);
+        let sub_patterns_strs: Vec<&str> = s.split('|').map(|s| s).collect();
+
+        let mut sub_patterns = vec![];
+        println!("subpatterns = {:?}", sub_patterns_strs);
+
+        for pattern in sub_patterns_strs {
+            let mut sub_pattern_tokens = vec![];
+            let mut chars = pattern.chars();
+            //start Parsing
+            while let Some(token) = Self::get_tokens(&mut chars)? {
+                sub_pattern_tokens.push(token);
+            }
+            sub_patterns.push(SubPattern {
+                tokens: sub_pattern_tokens,
+            });
         }
-        Ok(Self { tokens })
+
+        Ok(Self { sub_patterns })
     }
 }
 
@@ -291,32 +307,43 @@ impl Pattern {
 
     // start point of matching
     pub fn matches(&self, input: &str) -> bool {
-        // just a Closure to call it  in the next match
-        let exhaustive_match = |input: &str| -> bool {
-            input
-                .char_indices()
-                .map(|(i, _)| &input[i..])
-                .any(|substr| self.match_str(substr))
-        };
+        let mut sub_pattern_matched = false;
+        for sub_pattern in &self.sub_patterns {
+            println!("input now ============================================== {input}");
+            // just a Closure to call it  in the next match
+            let exhaustive_match = |input: &str| -> bool {
+                input
+                    .char_indices()
+                    .map(|(i, _)| &input[i..])
+                    .any(|substr| sub_pattern.match_str(substr))
+            };
 
-        match &self.tokens[0] {
-            Token::SOL(_) => self.match_str(input),
-            Token::EOL(_) => {
-                let reversed_str: String = input.chars().rev().collect();
-                self.match_str(reversed_str.as_str())
-            }
-            Token::Exact(exact_tokens) => {
-                println!("{:?}", &self.tokens);
-                if exact_tokens.len() != input.len() {
-                    return false;
-                } else {
-                    self.match_str(input)
+            match &sub_pattern.tokens[0] {
+                Token::SOL(_) => sub_pattern_matched |= sub_pattern.match_str(input),
+                Token::EOL(_) => {
+                    let reversed_str: String = input.chars().rev().collect();
+                    sub_pattern_matched |= sub_pattern.match_str(reversed_str.as_str());
                 }
-            }
-            _ => exhaustive_match(input),
-        }
-    }
+                Token::Exact(exact_tokens) => {
+                    println!("{:?}", sub_pattern.tokens);
+                    if exact_tokens.len() != input.len() {
+                        sub_pattern_matched |= false;
+                    } else {
+                        sub_pattern_matched |= sub_pattern.match_str(input);
+                    }
+                }
+                _ => sub_pattern_matched |= exhaustive_match(input),
+            };
 
+            if sub_pattern_matched {
+                return true; // stop at first success
+            }
+        }
+        false
+    }
+}
+
+impl SubPattern {
     fn match_str(&self, input_line: &str) -> bool {
         fn match_tokens(tokens: &[Token], input: &str) -> bool {
             if tokens.is_empty() {
@@ -381,9 +408,10 @@ fn test_parsing_digit_class() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![Token::CharClass(CharClass::Digit)],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![Token::CharClass(CharClass::Digit)],
+        }],
     };
-
     assert_eq!(parsed, expected);
 }
 
@@ -391,9 +419,10 @@ fn test_parsing_digit_class() {
 fn test_parsing_identifier_class() {
     let s = r"\w"; // raw string so the backslash is preserved
     let parsed: Pattern = s.parse().unwrap();
-
     let expected = Pattern {
-        tokens: vec![Token::CharClass(CharClass::Identifier)],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![Token::CharClass(CharClass::Identifier)],
+        }],
     };
     assert_eq!(parsed, expected);
 }
@@ -404,11 +433,13 @@ fn test_parsing_literals() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::Literal('c'),
-        ],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![
+                Token::Literal('a'),
+                Token::Literal('b'),
+                Token::Literal('c'),
+            ],
+        }],
     };
 
     assert_eq!(parsed, expected);
@@ -420,11 +451,13 @@ fn test_parsing_one_class() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![Token::GroupClass(GroupClass::MatchOne(vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::Literal('c'),
-        ]))],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![Token::GroupClass(GroupClass::MatchOne(vec![
+                Token::Literal('a'),
+                Token::Literal('b'),
+                Token::Literal('c'),
+            ]))],
+        }],
     };
     assert_eq!(parsed, expected);
 }
@@ -434,29 +467,36 @@ fn test_parsing_sol() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![Token::SOL(vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::Literal('c'),
-            Token::CharClass(CharClass::Digit),
-            Token::CharClass(CharClass::Identifier),
-        ])],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![Token::SOL(vec![
+                Token::Literal('a'),
+                Token::Literal('b'),
+                Token::Literal('c'),
+                Token::CharClass(CharClass::Digit),
+                Token::CharClass(CharClass::Identifier),
+            ])],
+        }],
     };
+
     assert_eq!(parsed, expected);
 }
 #[test]
 fn test_parsing_eol() {
     let s = "abc\\d\\w$";
     let parsed: Pattern = s.parse().unwrap();
+
     let expected = Pattern {
-        tokens: vec![Token::EOL(vec![
-            Token::CharClass(CharClass::Identifier),
-            Token::CharClass(CharClass::Digit),
-            Token::Literal('c'),
-            Token::Literal('b'),
-            Token::Literal('a'),
-        ])],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![Token::EOL(vec![
+                Token::CharClass(CharClass::Identifier),
+                Token::CharClass(CharClass::Digit),
+                Token::Literal('c'),
+                Token::Literal('b'),
+                Token::Literal('a'),
+            ])],
+        }],
     };
+
     assert_eq!(parsed, expected);
 }
 #[test]
@@ -465,15 +505,17 @@ fn test_parsing_combination() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![
-            Token::Literal('a'),
-            Token::CharClass(CharClass::Digit),
-            Token::GroupClass(GroupClass::MatchOne(vec![
-                Token::Literal('b'),
-                Token::Literal('c'),
-            ])),
-            Token::CharClass(CharClass::Identifier),
-        ],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![
+                Token::Literal('a'),
+                Token::CharClass(CharClass::Digit),
+                Token::GroupClass(GroupClass::MatchOne(vec![
+                    Token::Literal('b'),
+                    Token::Literal('c'),
+                ])),
+                Token::CharClass(CharClass::Identifier),
+            ],
+        }],
     };
 
     assert_eq!(parsed, expected);
@@ -482,29 +524,32 @@ fn test_parsing_combination() {
 fn test_parsing_none_class() {
     let s = "[^abc]";
     let parsed: Pattern = s.parse().unwrap();
-
     let expected = Pattern {
-        tokens: vec![Token::GroupClass(GroupClass::MatchNone(vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::Literal('c'),
-        ]))],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![Token::GroupClass(GroupClass::MatchNone(vec![
+                Token::Literal('a'),
+                Token::Literal('b'),
+                Token::Literal('c'),
+            ]))],
+        }],
     };
+
     assert_eq!(parsed, expected);
 }
 #[test]
 fn test_parsing_one_or_more() {
     let s = "abc+\\w\\d";
     let parsed: Pattern = s.parse().unwrap();
-
     let expected = Pattern {
-        tokens: vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::OneORMore(Box::new(Token::Literal('c'))),
-            Token::CharClass(CharClass::Identifier),
-            Token::CharClass(CharClass::Digit),
-        ],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![
+                Token::Literal('a'),
+                Token::Literal('b'),
+                Token::OneORMore(Box::new(Token::Literal('c'))),
+                Token::CharClass(CharClass::Identifier),
+                Token::CharClass(CharClass::Digit),
+            ],
+        }],
     };
 
     assert_eq!(parsed, expected);
@@ -515,32 +560,42 @@ fn test_parsing_one_or_none() {
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::OneOrNone(Box::new(Token::Literal('c'))),
-            Token::CharClass(CharClass::Identifier),
-            Token::CharClass(CharClass::Digit),
-        ],
+        sub_patterns: vec![SubPattern {
+            tokens: vec![
+                Token::Literal('a'),
+                Token::Literal('b'),
+                Token::OneOrNone(Box::new(Token::Literal('c'))),
+                Token::CharClass(CharClass::Identifier),
+                Token::CharClass(CharClass::Digit),
+            ],
+        }],
     };
 
     assert_eq!(parsed, expected);
 }
+
 #[test]
-fn test_parsing_wild_card() {
-    let s = "ab.c?\\w\\d";
+fn test_parsing_alternation() {
+    let s = "cat|dog";
     let parsed: Pattern = s.parse().unwrap();
 
     let expected = Pattern {
-        tokens: vec![
-            Token::Literal('a'),
-            Token::Literal('b'),
-            Token::WildCard,
-            Token::OneOrNone(Box::new(Token::Literal('c'))),
-            Token::CharClass(CharClass::Identifier),
-            Token::CharClass(CharClass::Digit),
+        sub_patterns: vec![
+            SubPattern {
+                tokens: vec![
+                    Token::Literal('c'),
+                    Token::Literal('a'),
+                    Token::Literal('t'),
+                ],
+            },
+            SubPattern {
+                tokens: vec![
+                    Token::Literal('d'),
+                    Token::Literal('o'),
+                    Token::Literal('g'),
+                ],
+            },
         ],
     };
-
     assert_eq!(parsed, expected);
 }
