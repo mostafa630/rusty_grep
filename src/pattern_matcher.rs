@@ -122,8 +122,17 @@ fn test_match_pattern_on_wild_card() {
 #[test]
 fn test_match_pattern_on_alternation() {
     let pattern_matcher = PatternMatcher {
-        pattern: "cat|dog".to_string(),
+        pattern: "(cat|dog)".to_string(),
         input_line: "cat".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
+
+#[test]
+fn test_match_pattern_on_one_or_more_digit(){
+    let pattern_matcher = PatternMatcher {
+        pattern: "^s?h$".to_string(),
+        input_line: "sh".to_string(),
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }

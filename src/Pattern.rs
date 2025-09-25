@@ -90,7 +90,7 @@ impl Token {
             match rem {
                 Remaining::Single(remaining_str) => remainings.push(remaining_str),
                 _ => return None,
-            }
+            }   
         } else {
             return None; // doesn't match even one
         }
@@ -171,7 +171,7 @@ impl FromStr for Pattern {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let sub_patterns_strs: Vec<&str> = s.split('|').map(|s| s).collect();
+        let sub_patterns_strs: Vec<String> = Self::expand_pattern(s);
 
         let mut sub_patterns = vec![];
         println!("subpatterns = {:?}", sub_patterns_strs);
@@ -193,6 +193,39 @@ impl FromStr for Pattern {
 }
 
 impl Pattern {
+    fn expand_pattern(pattern: &str) -> Vec<String> {
+        fn helper(s: &str) -> Vec<String> {
+            if let Some(open) = s.find('(') {
+                let close = s[open..]
+                    .find(')')
+                    .map(|i| open + i)
+                    .expect("Unmatched '('");
+
+                let before = &s[..open];
+                let inside = &s[open + 1..close];
+                let after = &s[close + 1..];
+
+                let choices: Vec<&str> = if inside.contains('|') {
+                    inside.split('|').collect()
+                } else {
+                    vec![inside]
+                };
+
+                let mut results = vec![];
+                for choice in choices {
+                    for rest in helper(after) {
+                        results.push(format!("{}{}{}", before, choice, rest));
+                    }
+                }
+                results
+            } else {
+                vec![s.to_string()]
+            }
+        }
+
+        helper(pattern)
+    }
+
     // ------------------------------------------------------------------------------//
     //                                 Parsing Logic                                 //
     // ------------------------------------------------------------------------------//
@@ -217,20 +250,39 @@ impl Pattern {
         }
         //if not SOL do normal Parsing
         match chars.next() {
-            Some('\\') => match chars
-                .next()
-                .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
-            {
-                'd' => Ok(Some(Token::CharClass(CharClass::Digit))),
-                'w' => Ok(Some(Token::CharClass(CharClass::Identifier))),
-                '\\' => Ok(Some(Token::Literal('\\'))),
-                c => {
-                    return Err(ParseError::InvalidEscape(format!(
-                        "\\ doesn't allow {} after it",
-                        c
-                    )))
+            Some('\\') => {
+                let mut token;
+                match chars
+                    .next()
+                    .ok_or(ParseError::UnexpectedEof(format!("Expcted char after \\")))?
+                {
+                    'd' => token = Token::CharClass(CharClass::Digit),
+                    'w' => token = Token::CharClass(CharClass::Identifier),
+                    '\\' => token = Token::Literal('\\'),
+                    c => {
+                        return Err(ParseError::InvalidEscape(format!(
+                            "\\ doesn't allow {} after it",
+                            c
+                        )))
+                    }
                 }
-            },
+                let next_char = get_next_char(chars);
+                if let Some(char) = next_char {
+                    match char {
+                        '+' => {
+                            chars.next();
+                            Ok(Some(Token::OneORMore(Box::new(token))))
+                        },
+                        '?' => {
+                            chars.next();
+                            Ok(Some(Token::OneOrNone(Box::new(token))))
+                        },
+                        _ => Ok(Some(token)),
+                    }
+                } else {
+                    Ok(Some(token))
+                }
+            }
             Some('^') => Self::get_anchor_tokens(chars, Anchor::Start),
             Some('[') => Self::get_group_tokens(chars),
             Some(c) => {
@@ -315,22 +367,23 @@ impl Pattern {
                 input
                     .char_indices()
                     .map(|(i, _)| &input[i..])
-                    .any(|substr| sub_pattern.match_str(substr))
+                    .any(|substr| sub_pattern.match_str(substr).0)
             };
 
             match &sub_pattern.tokens[0] {
-                Token::SOL(_) => sub_pattern_matched |= sub_pattern.match_str(input),
+                Token::SOL(_) => sub_pattern_matched |= sub_pattern.match_str(input).0,
                 Token::EOL(_) => {
                     let reversed_str: String = input.chars().rev().collect();
-                    sub_pattern_matched |= sub_pattern.match_str(reversed_str.as_str());
+                    sub_pattern_matched |= sub_pattern.match_str(reversed_str.as_str()).0;
                 }
-                Token::Exact(exact_tokens) => {
-                    println!("{:?}", sub_pattern.tokens);
-                    if exact_tokens.len() != input.len() {
-                        sub_pattern_matched |= false;
-                    } else {
-                        sub_pattern_matched |= sub_pattern.match_str(input);
-                    }
+                Token::Exact(_) => {
+                 let (mathced , remaining_str) = sub_pattern.match_str(input);
+                 if remaining_str.len() != 0 {
+                    sub_pattern_matched |= false;
+                 }
+                 else {
+                    sub_pattern_matched |= mathced;
+                 }                        
                 }
                 _ => sub_pattern_matched |= exhaustive_match(input),
             };
@@ -344,36 +397,42 @@ impl Pattern {
 }
 
 impl SubPattern {
-    fn match_str(&self, input_line: &str) -> bool {
-        fn match_tokens(tokens: &[Token], input: &str) -> bool {
+    fn match_str<'a>(&self, input_line: &'a str) -> (bool , &'a str) {
+        fn match_tokens<'a>(tokens: &[Token], input: &'a str) -> (bool, &'a str){
             if tokens.is_empty() {
-                return true;
+                return (true , input);
             }
 
             let (first, rest_tokens) = tokens.split_first().unwrap();
             println!("First token = {:?}", first);
             println!("input = {}", input);
+            let mut final_remaning : &str =""; 
             if let Some(remaining) = first._match(input) {
                 match remaining {
                     Remaining::Single(Some(remaining_str)) => {
+                        final_remaning = remaining_str;
                         return match_tokens(rest_tokens, remaining_str)
                     }
                     Remaining::Multiple(remaining_strs) => {
                         for remaining in remaining_strs {
                             if let Some(remaining_str) = remaining {
-                                if match_tokens(rest_tokens, remaining_str) {
-                                    return true; // found a successful match
+                                final_remaning = remaining_str;
+                                let (matched, new_remaning_str) = match_tokens(rest_tokens, remaining_str);
+                                if matched {
+                                    return (true ,new_remaning_str); // found a successful match
                                 }
                             }
                         }
-                        return false;
+                        return (false , final_remaning);
                     }
-
-                    _ => return false,
+                    
+                    _ => {
+                        return (false , final_remaning)
+                    },
                 }
                 // Try all remaining options
             }
-            false // no match found
+            (false ,final_remaning) // no match found
         }
 
         match_tokens(&self.tokens, input_line)
@@ -599,3 +658,24 @@ fn test_parsing_alternation() {
     };
     assert_eq!(parsed, expected);
 }
+
+#[test]
+fn test_parsing_one_or_more_digit() {
+    let s = "a\\d+c";
+    let parsed: Pattern = s.parse().unwrap();
+
+    let expected = Pattern {
+        sub_patterns: vec![
+            SubPattern {
+                tokens: vec![
+                    Token::Literal('a'),
+                    Token::OneORMore(Box::new(Token::CharClass(CharClass::Digit))),
+                    Token::Literal('c'),
+                ],
+            },
+        ],
+    };
+    assert_eq!(parsed, expected);
+}
+
+
