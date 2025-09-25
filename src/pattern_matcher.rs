@@ -110,3 +110,11 @@ fn test_match_pattern_on_one_or_none() {
     assert_eq!(pattern_matcher.match_pattern(), true);
 }
 
+#[test]
+fn test_match_pattern_on_wild_card() {
+    let pattern_matcher = PatternMatcher {
+        pattern: "d\\w.g".to_string(),
+        input_line: "d_og".to_string(),
+    };
+    assert_eq!(pattern_matcher.match_pattern(), true);
+}
