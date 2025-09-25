@@ -171,7 +171,7 @@ impl FromStr for Pattern {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let sub_patterns_strs: Vec<&str> = s.split('|').map(|s| s).collect();
+        let sub_patterns_strs: Vec<String> = Self::expand_pattern(s);
 
         let mut sub_patterns = vec![];
         println!("subpatterns = {:?}", sub_patterns_strs);
@@ -190,9 +190,45 @@ impl FromStr for Pattern {
 
         Ok(Self { sub_patterns })
     }
+
+    
 }
 
 impl Pattern {
+
+    fn expand_pattern(pattern: &str) -> Vec<String> {
+    fn helper(s: &str) -> Vec<String> {
+        if let Some(open) = s.find('(') {
+            let close = s[open..]
+                .find(')')
+                .map(|i| open + i)
+                .expect("Unmatched '('");
+
+            let before = &s[..open];
+            let inside = &s[open + 1..close];
+            let after = &s[close + 1..];
+
+            let choices: Vec<&str> = if inside.contains('|') {
+                inside.split('|').collect()
+            } else {
+                vec![inside]
+            };
+
+            let mut results = vec![];
+            for choice in choices {
+                for rest in helper(after) {
+                    results.push(format!("{}{}{}", before, choice, rest));
+                }
+            }
+            results
+        } else {
+            vec![s.to_string()]
+        }
+    }
+
+    helper(pattern)
+}
+
     // ------------------------------------------------------------------------------//
     //                                 Parsing Logic                                 //
     // ------------------------------------------------------------------------------//
