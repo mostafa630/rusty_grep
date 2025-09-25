@@ -122,6 +122,8 @@ impl Token {
                 if let Remaining::Single(remaining_str) = remaning {
                     remainings.push(remaining_str);
                 };
+
+                println!("reamnfing s = ==== {:?}" ,remainings);
                 Some(Remaining::Multiple(remainings))
             }
             // if the char doesn't match that is fine and return the input with no consuing for any char
@@ -390,12 +392,14 @@ impl Pattern {
                 }
                 Token::Exact(_) => {
                  let (mathced , remaining_str) = sub_pattern.match_str(input);
-                 if remaining_str.len() != 0 {
-                    sub_pattern_matched |= false;
+                 if mathced && remaining_str.is_empty()  {
+                    sub_pattern_matched |= true;
                  }
                  else {
-                    sub_pattern_matched |= mathced;
-                 }                        
+                    println!("rem = {}" ,remaining_str);
+                    sub_pattern_matched |= false;
+                 }
+                                  
                 }
                 _ => sub_pattern_matched |= exhaustive_match(input),
             };
@@ -410,36 +414,42 @@ impl Pattern {
 
 impl SubPattern {
     fn match_str<'a>(&self, input_line: &'a str) -> (bool , &'a str) {
-        fn match_tokens<'a>(tokens: &[Token], input: &'a str) -> (bool, &'a str){
+        fn match_tokens<'a>(tokens: &[Token], input: &'a str ) -> (bool, &'a str){
             if tokens.is_empty() {
+                println!("lplplplplplp");
                 return (true , input);
             }
 
             let (first, rest_tokens) = tokens.split_first().unwrap();
-            println!("First token = {:?}", first);
-            println!("input = {}", input);
+          
+            // println!("First token = {:?}", first);
+            // println!("input = {}", input);
             let mut final_remaning : &str =""; 
             if let Some(remaining) = first._match(input) {
                 match remaining {
                     Remaining::Single(Some(remaining_str)) => {
                         final_remaning = remaining_str;
-                        return match_tokens(rest_tokens, remaining_str)
+                        println!("tokens = {:?}" , rest_tokens);
+
+                        return match_tokens(rest_tokens, remaining_str )
                     }
                     Remaining::Multiple(remaining_strs) => {
+                        let mut last_remaining = input; // keep something safe to return on failure
                         for remaining in remaining_strs {
                             if let Some(remaining_str) = remaining {
-                                final_remaning = remaining_str;
-                                let (matched, new_remaning_str) = match_tokens(rest_tokens, remaining_str);
+                                let (matched, new_remaining_str) = match_tokens(rest_tokens, remaining_str);
                                 if matched {
-                                    return (true ,new_remaning_str); // found a successful match
+                                    println!("herereterter");
+                                    return (true, new_remaining_str); // propagate success immediately
                                 }
+                                last_remaining = remaining_str; // update in case of failure
                             }
                         }
-                        return (false , final_remaning);
+                        
                     }
                     
                     _ => {
-                        return (false , final_remaning)
+                       return (true, final_remaning)
                     },
                 }
                 // Try all remaining options
