@@ -131,8 +131,8 @@ fn test_match_pattern_on_alternation() {
 #[test]
 fn test_match_pattern_on_one_or_more_digit(){
     let pattern_matcher = PatternMatcher {
-        pattern: "^s?h$".to_string(),
-        input_line: "sh".to_string(),
+        pattern: "^abbc\\d+59?(cat|dog)$".to_string(),
+        input_line: "abbc5645559dog".to_string(),
     };
     assert_eq!(pattern_matcher.match_pattern(), true);
 }
