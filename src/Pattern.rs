@@ -1,6 +1,5 @@
 use std::{
-    str::{Chars, FromStr},
-    vec,
+    io::Read, str::{Chars, FromStr}, vec
 };
 
 #[derive(Debug, PartialEq)]
@@ -56,18 +55,20 @@ impl Token {
             {
                 Some(Remaining::Single(Some(skip(str, 1))))
             }
-            Self::SOL(sub_tokens) => Some(Remaining::Single(Self::match_group(
+            Self::SOL(sub_tokens) => Self::match_group(
+                sub_tokens.as_slice(),
+                str, &mut vec![]
+            ),
+            Self::EOL(sub_tokens) => Self::match_group(
                 sub_tokens.as_slice(),
                 str,
-            ))),
-            Self::EOL(sub_tokens) => Some(Remaining::Single(Self::match_group(
+                &mut vec![]
+            ),
+            Self::Exact(sub_tokens) => Self::match_excat_group(
                 sub_tokens.as_slice(),
                 str,
-            ))),
-            Self::Exact(sub_tokens) => Some(Remaining::Single(Self::match_group(
-                sub_tokens.as_slice(),
-                str,
-            ))),
+                &mut vec![]
+            ),
             Self::OneORMore(token) => Self::match_one_or_more(token, str),
             Self::OneOrNone(token) => Self::match_one_or_none(token, str),
 
@@ -129,27 +130,59 @@ impl Token {
         }
     }
 
-    fn match_group<'a>(tokens: &[Token], str: &'a str) -> Option<&'a str> {
+    fn match_group<'a>(tokens: &[Token], str: &'a str ,remainings :&mut Vec<Option<&'a str>>) -> Option<Remaining<'a>> {
         if tokens.is_empty() {
-            return Some(str);
+            return Some(Remaining::Single(Some(str)));
         }
 
         let (current_token, remaining_tokens) = tokens.split_first().unwrap();
         if let Some(remaining) = current_token._match(str) {
             match remaining {
                 Remaining::Single(Some(remaining_str)) => {
-                    Self::match_group(remaining_tokens, remaining_str)
+                    Self::match_group(remaining_tokens, remaining_str ,remainings)
+                }
+                Remaining::Multiple(remaining_strs) => {
+                    // Try each possible remaining string
+                    for remaining_str_opt in remaining_strs {
+                        
+                        if let Some(remaining_str) = remaining_str_opt {
+                            if let Some(Remaining::Single(s)) = Self::match_group(remaining_tokens, remaining_str ,remainings){
+                                remainings.push(s);
+                            }
+                        }
+                    }
+                    Some(Remaining::Multiple(remainings.clone()))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    fn match_excat_group<'a>(tokens: &[Token], str: &'a str ,remainings :&mut Vec<Option<&'a str>>  ) -> Option<Remaining<'a>> {
+        if tokens.is_empty()  {
+            return Some(Remaining::Single(Some(str)));
+        }
+
+        let (current_token, remaining_tokens) = tokens.split_first().unwrap();
+        if let Some(remaining) = current_token._match(str) {
+            match remaining {
+                Remaining::Single(Some(remaining_str)) => {
+                    Self::match_excat_group(remaining_tokens, remaining_str , remainings)
                 }
                 Remaining::Multiple(remaining_strs) => {
                     // Try each possible remaining string
                     for remaining_str_opt in remaining_strs {
                         if let Some(remaining_str) = remaining_str_opt {
-                            if let Some(final_remaining) = Self::match_group(remaining_tokens, remaining_str) {
-                                return Some(final_remaining);
-                            }
+                            if let Some(Remaining::Single(s)) = Self::match_excat_group(remaining_tokens, remaining_str ,remainings){
+                                if s.unwrap().len() == 0{
+                                    remainings.push(s);
+                                }
+                            } 
                         }
                     }
-                    None
+                    Some(Remaining::Multiple(remainings.clone()))
                 }
                 _ => None,
             }
@@ -186,7 +219,6 @@ impl FromStr for Pattern {
         let sub_patterns_strs: Vec<String> = Self::expand_pattern(s);
 
         let mut sub_patterns = vec![];
-        println!("subpatterns = {:?}", sub_patterns_strs);
 
         for pattern in sub_patterns_strs {
             let mut sub_pattern_tokens = vec![];
@@ -373,7 +405,6 @@ impl Pattern {
     pub fn matches(&self, input: &str) -> bool {
         let mut sub_pattern_matched = false;
         for sub_pattern in &self.sub_patterns {
-            println!("input now ============================================== {input}");
             // just a Closure to call it  in the next match
             let exhaustive_match = |input: &str| -> bool {
                 input
@@ -412,19 +443,17 @@ impl SubPattern {
     fn match_str<'a>(&self, input_line: &'a str) -> (bool , &'a str) {
         fn match_tokens<'a>(tokens: &[Token], input: &'a str) -> (bool, &'a str){
             if tokens.is_empty() {
-                return (true , input);
+                 return (true , input);
             }
 
             let (first, rest_tokens) = tokens.split_first().unwrap();
-            println!("First token = {:?}", first);
-            println!("input = {}", input);
             let mut final_remaning : &str =""; 
             if let Some(remaining) = first._match(input) {
                 match remaining {
                     Remaining::Single(Some(remaining_str)) => {
                         final_remaning = remaining_str;
-                        return match_tokens(rest_tokens, remaining_str)
-                    }
+                        match_tokens(rest_tokens, remaining_str)  
+                    },
                     Remaining::Multiple(remaining_strs) => {
                         for remaining in remaining_strs {
                             if let Some(remaining_str) = remaining {
@@ -435,19 +464,23 @@ impl SubPattern {
                                 }
                             }
                         }
-                        return (false , final_remaning);
+                
+                        (false , final_remaning)
                     }
                     
                     _ => {
-                        return (false , final_remaning)
+                        (false , final_remaning)
                     },
                 }
                 // Try all remaining options
             }
-            (false ,final_remaning) // no match found
+            else{
+                (false ,final_remaning) // no match found
+            }
         }
-
-        match_tokens(&self.tokens, input_line)
+        
+        return match_tokens(&self.tokens, input_line);
+        
     }
 }
 
