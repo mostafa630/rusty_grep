@@ -24,8 +24,8 @@ fn main() {
     let pattern = args[2].clone();
 
     if args.len() >=4 {
-        let file_name = args[3].clone();
-        process_file(file_name, pattern);
+        let files = get_files_names_from_args(args);
+        process_files(files, pattern);
     }
     else{
         // process input from stdin
@@ -35,31 +35,48 @@ fn main() {
     }
 }
 
-fn process_file(file_name:String , pattern: String){
-let _file = _File::new(file_name);
-    match _file {
-        Ok(file)=>{
-            let lines_matched = file.match_file(pattern.as_str());
-            if lines_matched.len()!=0{
-                print_lines(lines_matched);
-                process::exit(0)
+
+fn process_files(files_names: Vec<String>, pattern: String) {
+    let multiple_files = files_names.len() > 1;
+    let mut any_match = false;
+
+    for file_name in files_names {
+        if let Ok(file) = _File::new(file_name.clone()) {
+            let lines_matched = file.match_file(pattern.as_str()); // Vec<&String>
+            if !lines_matched.is_empty() {
+                any_match = true;
+                for line in lines_matched {
+                    if multiple_files {
+                        println!("{file_name}:{line}");
+                    } else {
+                        println!("{line}");
+                    }
+                }
             }
-             process::exit(1)
-        },
-        Err(e)=>{
-            println!("{e}");
-            process::exit(1)
         }
     }
 
-    fn print_lines(lines_content : Vec<&String>){
-        for line_content in lines_content{
+    std::process::exit(if any_match { 0 } else { 1 });
+}
+
+fn print_lines(lines_content: Vec<&String>, file_name: String) {
+    for line_content in lines_content {
+        if file_name.is_empty() {
             println!("{line_content}");
+        } else {
+            println!("{file_name}:{line_content}");
         }
     }
 }
+fn get_files_names_from_args(args : Vec<String>) -> Vec<String>{
+    let mut files_names  =vec![];
+    for file_name in &args[3..]{
+        files_names.push(file_name.clone());
+    }
+    files_names
+}
 
-fn process_input_from_stdin(input_line : String ,pattern : String ){
+fn process_input_from_stdin(input_line : String ,pattern : String  ,){
  if match_input(&input_line, &pattern) {
         process::exit(0)
     } else {
