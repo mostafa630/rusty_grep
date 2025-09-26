@@ -46,7 +46,6 @@ impl _File {
     }
 }
 
-
 impl Line {
     fn match_line(&self, pattern: &str) -> bool {
         match_input(&self.content, pattern)
