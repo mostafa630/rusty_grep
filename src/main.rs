@@ -5,46 +5,62 @@ use std::process;
 mod Pattern;
 mod pattern_matcher;
 
-use pattern_matcher::PatternMatcher;
+mod File;
 
-fn match_pattern(input_line: &str, pattern: &str) -> bool {
-    let matcher = PatternMatcher {
-        input_line: input_line.to_string(),
-        pattern: pattern.to_string(),
-    };
-    if pattern.chars().count() == 1 {
-        matcher.default()
-    } else if pattern == "\\d" {
-        matcher.match_any_digit()
-    } else if pattern == "\\w" {
-        matcher.match_non_specail_char()
-    } else if pattern.starts_with('[') && pattern.ends_with(']') && pattern.chars().count() > 2 {
-        if pattern.chars().nth(1).unwrap() == '^' {
-            matcher.match_all_the_class()
-        } else {
-            matcher.match_character_class()
-        }
-    } else {
-        matcher.match_pattern()
-    }
-}
+use pattern_matcher::match_input;
+
+use crate::File::_File;
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     eprintln!("Logs from your program will appear here!");
-
-    if env::args().nth(1).unwrap() != "-E" {
-        println!("Expected first argument to be '-E'");
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 3 || args[1] != "-E" {
+        println!("the input is not correct");
         process::exit(1);
     }
 
-    let pattern = env::args().nth(2).unwrap();
-    let mut input_line = String::new();
+    let pattern = args[2].clone();
 
-    io::stdin().read_line(&mut input_line).unwrap();
+    if args.len() >=4 {
+        let file_name = args[3].clone();
+        process_file(file_name, pattern);
+    }
+    else{
+        // process input from stdin
+        let mut input_line = String::new();
+        io::stdin().read_line(&mut input_line).unwrap();
+        process_input_from_stdin(input_line, pattern);
+    }
+}
 
-    if match_pattern(&input_line, &pattern) {
+fn process_file(file_name:String , pattern: String){
+let _file = _File::new(file_name);
+    match _file {
+        Ok(file)=>{
+            let lines_matched = file.match_file(pattern.as_str());
+            if lines_matched.len()!=0{
+                print_lines(lines_matched);
+                process::exit(0)
+            }
+             process::exit(1)
+        },
+        Err(e)=>{
+            println!("{e}");
+            process::exit(1)
+        }
+    }
+
+    fn print_lines(lines_content : Vec<&String>){
+        for line_content in lines_content{
+            println!("{line_content}");
+        }
+    }
+}
+
+fn process_input_from_stdin(input_line : String ,pattern : String ){
+ if match_input(&input_line, &pattern) {
         process::exit(0)
     } else {
         process::exit(1)
