@@ -12,21 +12,7 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
         input_line: input_line.to_string(),
         pattern: pattern.to_string(),
     };
-    if pattern.chars().count() == 1 {
-        matcher.default()
-    } else if pattern == "\\d" {
-        matcher.match_any_digit()
-    } else if pattern == "\\w" {
-        matcher.match_non_specail_char()
-    } else if pattern.starts_with('[') && pattern.ends_with(']') && pattern.chars().count() > 2 {
-        if pattern.chars().nth(1).unwrap() == '^' {
-            matcher.match_all_the_class()
-        } else {
-            matcher.match_character_class()
-        }
-    } else {
-        matcher.match_pattern()
-    }
+    matcher.match_pattern()
 }
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
@@ -49,4 +35,6 @@ fn main() {
     } else {
         process::exit(1)
     }
+
+
 }
