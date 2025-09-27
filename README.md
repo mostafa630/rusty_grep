@@ -1,39 +1,86 @@
-[![progress-banner](https://backend.codecrafters.io/progress/grep/9287eb3f-a8b2-4d08-a20d-940002e15dd8)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# 🦀 Rust Grep Clone (Codecrafters.io Challenge)
 
-This is a starting point for Rust solutions to the
-["Build Your Own grep" Challenge](https://app.codecrafters.io/courses/grep/overview).
+This project is my implementation of the [Codecrafters.io](https://app.codecrafters.io/courses/grep/overview) grep challenge, where the goal is to build a simplified version of the classic Unix tool grep — completely from scratch — using Rust.
 
-[Regular expressions](https://en.wikipedia.org/wiki/Regular_expression)
-(Regexes, for short) are patterns used to match character combinations in
-strings. [`grep`](https://en.wikipedia.org/wiki/Grep) is a CLI tool for
-searching using Regexes.
+The project is not just a line matcher: I went deeper into regex parsing and built a custom pattern engine that supports literals, character classes, anchors, quantifiers, groups, and alternation.
 
-In this challenge you'll build your own implementation of `grep`. Along the way
-we'll learn about Regex syntax, how parsers/lexers work, and how regular
-expressions are evaluated.
+## 🚀 Features
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+### 🔎 Pattern Matching Engine
 
-# Passing the first stage
+At the core, I implemented a **mini regex engine**.
 
-The entry point for your `grep` implementation is in `src/main.rs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+### Supported Features
 
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+- **Literals** → match exact characters (e.g., `abc`)
+- **Wildcards** → `.` matches any single character
+- **Character classes**:
+  - `\d` → digits  
+  - `\w` → identifiers (`a-z`, `A-Z`, `_`)  
+  - `[abc]` → match one of given characters  
+  - `[^abc]` → match any character *except* those
+- **Anchors**:
+  - `^` → start of line  
+  - `$` → end of line  
+  - `^...$` → exact line match
+- **Quantifiers**:
+  - `+` → one or more  
+  - `?` → zero or one
+- **Alternation**:
+  - `(cat|dog)` → expands into multiple sub-patterns (`cat`, `dog`)
+
+---
+
+I wrote a full **parser** that converts regex strings into an List of tokens, and a **recursive matcher** that evaluates input against this structure.
+
+
+## 📂 File Handling
+
+- Search through **one or multiple files**.
+- **Recursive folder search** with `-r`.
+
+## ⚙️ Command-Line Interface
+```bash
+ # From file(s)
+ ./rusty_grep -E "pattern" file1.txt file2.txt
+ # Recursive search
+ ./rusty_grep -r -E "pattern" <directory>
 ```
 
-Time to move on to the next stage!
+## 🔢 Exit Codes
 
-# Stage 2 & beyond
+- **0** → at least one match found  
+- **1** → no matches found  
+- errors (invalid input, file not found, etc.)
 
-Note: This section is for stages 2 and beyond.
 
-1. Ensure you have `cargo (1.87)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.rs`. This command compiles your Rust project, so it might be slow
-   the first time you run it. Subsequent runs will be fast.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+## 🔬 How It Works
+
+### 🧩 Pattern Parsing
+- Input regex is **expanded** (handles alternation like `(cat|dog)`).  
+  For example, if the pattern is `I love (cat|dog)`, it is treated as two separate patterns:  
+  - `I love cat`  
+  - `I love dog`
+- Each pattern string is parsed into a **list of tokens**  
+  (e.g., `Token::Literal`, `Token::CharClass`, `Token::GroupClass`, etc.).
+
+### 🎯 Matching
+For each input line:
+- The regex engine attempts to **match the tokens recursively**.
+- Supports multiple *"remaining string"* states when **quantifiers** are applied.
+- If **any subpattern matches**, the line is considered a match.
+
+### 📂 File Search
+- Opens each file with a **buffered reader**.
+- Passes each line through the **matcher**.
+- Collects matching lines and **prints them**.
+
+## ✅ Tests
+
+I wrote unit tests for the parser and matcher to ensure correctness.
+
+### Examples
+- `\d` → correctly parses into a **Digit class**.
+- `abc+` → parses into `a`, `b`, and `c+`.
+- `(cat|dog)` → expands into two subpatterns.
+- **Anchors** (`^`, `$`) → tested on multiple inputs.
