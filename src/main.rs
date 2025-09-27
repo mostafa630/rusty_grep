@@ -1,7 +1,7 @@
 use std::env;
+use std::fs;
 use std::io;
 use std::process;
-use std::fs;
 
 mod Pattern;
 mod pattern_matcher;
@@ -26,7 +26,8 @@ fn main() {
     let pattern = args[2].clone();
 
     if args.len() >= 4 {
-        if args[1] == "-r" {   // process folder (recursively search in that folder)
+        if args[1] == "-r" {
+            // process folder (recursively search in that folder)
             let folder_name = args[4].clone();
             let pattern = args[3].clone();
             let mut all_files = vec![];
@@ -37,7 +38,6 @@ fn main() {
                     process::exit(1);
                 }
             }
-            
         }
         let files = get_files_names_from_args(args);
         process_files(files, pattern);
@@ -88,15 +88,17 @@ fn get_files_names_from_args(args: Vec<String>) -> Vec<String> {
     }
     files_names
 }
-fn recursive_search(folder_path : String , founded_files : &mut Vec<String>)->io::Result<&mut Vec<String>>{
+fn recursive_search(
+    folder_path: String,
+    founded_files: &mut Vec<String>,
+) -> io::Result<&mut Vec<String>> {
     for entry in fs::read_dir(folder_path)? {
         let entry = entry?;
         let path = entry.path();
-        
-        if path.is_dir(){
-            recursive_search(path.to_string_lossy().to_string() , founded_files);
-        }
-        else{
+
+        if path.is_dir() {
+            recursive_search(path.to_string_lossy().to_string(), founded_files);
+        } else {
             founded_files.push(path.to_string_lossy().to_string());
         }
     }
