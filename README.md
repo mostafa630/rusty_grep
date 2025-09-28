@@ -84,3 +84,78 @@ I wrote unit tests for the parser and matcher to ensure correctness.
 - `abc+` → parses into `a`, `b`, and `c+`.
 - `(cat|dog)` → expands into two subpatterns.
 - **Anchors** (`^`, `$`) → tested on multiple inputs.
+
+## 📖 How to Use It
+
+### 1️⃣ Install Rust Toolchain
+If you don’t already have Rust installed, get it from [rustup.rs](https://rustup.rs):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+### 2️⃣ Clone the Repository
+
+```bash
+git clone https://github.com/mostafa630/rusty_grep.git
+cd rusty_grep
+```
+### 3️⃣ Build the Project
+
+```bash
+cargo build --release
+```
+### 4️⃣ Prepare Some Test Files
+
+You can create the test folder anywhere on your system. For example:
+
+```bash
+mkdir ~/my_test_files
+echo "the cat sleeps" > ~/my_test_files/animals1.txt
+echo "a dog runs"     > ~/my_test_files/animals2.txt
+echo "a bat flies"    > ~/my_test_files/mixed.txt
+echo "dogs and cats are friends" > ~/my_test_files/story.txt
+```
+### 5️⃣ Run the Grep Clone
+
+Navigate to the build output:
+
+```bash
+cd target/release
+```
+### 🔍 Search in Specific Files
+
+```bash
+./rusty_grep -E "(cat|dog)" ~/my_test_files/animals1.txt ~/my_test_files/animals2.txt
+```
+###Output
+
+```bash
+the cat sleeps
+a dog runs
+```
+
+### 📂 Search recursively through a folder:
+
+```bash
+./rusty_grep -r -E "(cat|dog)" ~/my_test_files
+```
+###Output
+
+```bash
+animals1.txt:the cat sleeps
+animals2.txt:a dog runs
+story.txt:dogs and cats are friends
+```
+### 📥 Use with stdin (piping):
+You can also pipe text directly into rusty_grep without files:
+```bash
+ echo "hello cat" | ./rusty_grep -E "cat"
+```
+###Output
+
+```bash
+input matched the pattern
+```
+
+
+
