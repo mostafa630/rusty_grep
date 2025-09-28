@@ -5,6 +5,10 @@ authors = ["Codecrafters <hello@codecrafters.io>"]
 edition = "2021"
 rust-version = "1.80"
 
+[[bin]]
+name = "rusty_grep"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.68"                                # error handling
 bytes = "1.3.0"                                  # helps manage buffers
