@@ -15,8 +15,6 @@ use crate::File::_File;
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
 fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    eprintln!("Logs from your program will appear here!");
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         println!("the input is not correct");
@@ -107,8 +105,10 @@ fn recursive_search(
 
 fn process_input_from_stdin(input_line: String, pattern: String) {
     if match_input(&input_line, &pattern) {
+        println!("input mathc the pattern");
         process::exit(0)
     } else {
+        println!("input didn't match the pattern");
         process::exit(1)
     }
 }
